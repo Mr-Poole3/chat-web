@@ -1,0 +1,13 @@
+# Web框架和ASGI服务器
+fastapi>=0.104.1
+uvicorn>=0.24.0
+httpx>=0.25.2
+
+# 数据验证和序列化
+pydantic>=2.5.2
+
+# Azure OpenAI
+openai>=1.3.5
+
+# 其他工具包
+python-dotenv>=1.0.0  # 用于环境变量管理 

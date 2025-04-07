@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>天汇AI 工具箱</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+          integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg=="
+          crossorigin="anonymous" referrerpolicy="no-referrer"/>
+    <style>
+        body {
+            font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            background-color: #0f1117;
+            margin: 0;
+            padding: 0;
+            color: #e0e0ff;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            text-align: center;
+            padding: 40px;
+            background: rgba(30, 33, 48, 0.7);
+            border-radius: 16px;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            backdrop-filter: blur(10px);
+            max-width: 600px;
+            width: 90%;
+        }
+
+        h1 {
+            font-size: 36px;
+            margin-bottom: 20px;
+            background: linear-gradient(90deg, #4c4ed9, #6366f1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: 700;
+            letter-spacing: 1px;
+        }
+
+        p {
+            font-size: 18px;
+            color: #a5b4fc;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+
+        .button-container {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin-top: 30px;
+        }
+
+        .button {
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 500;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .login-button {
+            background: linear-gradient(90deg, #4c4ed9, #6366f1);
+            color: white;
+            border: none;
+        }
+
+        .register-button {
+            background: transparent;
+            color: #6366f1;
+            border: 1px solid rgba(99, 102, 241, 0.4);
+        }
+
+        .button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+        }
+
+        .login-button:hover {
+            background: linear-gradient(90deg, #3b3db3, #4f46e5);
+        }
+
+        .register-button:hover {
+            background: rgba(99, 102, 241, 0.1);
+        }
+
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-top: 40px;
+        }
+
+        .feature {
+            background: rgba(22, 25, 35, 0.5);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: block;
+            color: inherit;
+        }
+
+        .feature:hover {
+            transform: translateY(-5px);
+            border-color: rgba(99, 102, 241, 0.4);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.1);
+        }
+
+        .feature i {
+            font-size: 24px;
+            color: #6366f1;
+            margin-bottom: 15px;
+        }
+
+        .feature h3 {
+            margin: 0 0 10px;
+            color: #e0e0ff;
+            font-size: 18px;
+        }
+
+        .feature p {
+            margin: 0;
+            font-size: 14px;
+            color: #a5b4fc;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+                margin: 20px;
+            }
+
+            h1 {
+                font-size: 28px;
+            }
+
+            p {
+                font-size: 16px;
+            }
+
+            .button-container {
+                flex-direction: column;
+            }
+
+            .button {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+
+        /* 添加用户菜单样式 */
+        .user-menu {
+                position: fixed;
+            top: 20px;
+            right: 20px;
+                display: flex;
+                align-items: center;
+            gap: 15px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 8px 16px;
+            border-radius: 12px;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .user-menu:hover {
+            background: rgba(255, 255, 255, 1);
+            border-color: rgba(99, 102, 241, 0.4);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.1);
+        }
+
+        #username-display {
+            color: #1e293b;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 500;
+        }
+
+        .user-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #4c4ed9, #6366f1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 18px;
+            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .user-avatar:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+        }
+
+        #username-text {
+            color: #1e293b;
+            font-weight: 500;
+            letter-spacing: 0.3px;
+        }
+
+        .logout-button {
+            background: transparent;
+            border: 1px solid rgba(99, 102, 241, 0.4);
+            color: #4c4ed9;
+            padding: 6px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        .logout-button:hover {
+            background-color: rgba(99, 102, 241, 0.1);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.1);
+        }
+
+        .logout-button i {
+                font-size: 14px;
+            transition: transform 0.3s ease;
+        }
+
+        .logout-button:hover i {
+            transform: translateX(2px);
+        }
+    </style>
+</head>
+<body>
+    <!-- 添加用户菜单 -->
+    <div class="user-menu" id="user-menu" style="display: none;">
+        <span id="username-display">
+            <div class="user-avatar" id="user-avatar"></div>
+            <span id="username-text"></span>
+        </span>
+        <button id="logout-button" class="logout-button">
+            <i class="fas fa-sign-out-alt"></i> 退出
+        </button>
+    </div>
+
+    <div class="container">
+        <h1>欢迎使用 天汇AI 工具箱</h1>
+        <p>这是一个强大的 天汇AI合，提供多种智能服务，包括 AI 聊天、PDF 转换、论文写作、简历生成等功能。登录后即可开始使用。</p>
+
+        <div class="features">
+            <a href="#" class="feature" data-feature="chat">
+                <i class="fas fa-robot"></i>
+                <h3>AI 聊天</h3>
+                <p>与智能 AI 助手进行自然对话，获取帮助和建议。</p>
+            </a>
+            <a href="#" class="feature" data-feature="pdf">
+                <i class="fas fa-file-pdf"></i>
+                <h3>PDF 转换</h3>
+                <p>将 PDF 文件转换为其他格式，支持多种文档类型。</p>
+            </a>
+            <a href="#" class="feature" data-feature="paper">
+                <i class="fas fa-pen-fancy"></i>
+                <h3>论文写作</h3>
+                <p>智能辅助论文写作，提供写作建议和格式规范。</p>
+            </a>
+            <a href="#" class="feature" data-feature="resume">
+                <i class="fas fa-file-alt"></i>
+                <h3>简历生成</h3>
+                <p>一键生成简历。</p>
+            </a>
+        </div>
+
+        <div class="button-container">
+            <a href="login.html" class="button login-button">
+                <i class="fas fa-sign-in-alt"></i> 登录
+            </a>
+            <a href="register.html" class="button register-button">
+                <i class="fas fa-user-plus"></i> 注册
+            </a>
+    </div>
+</div>
+
+<script>
+        // 定义全局API基础URL
+        const API_BASE_URL = window.location.origin; // 自动使用当前域名
+        
+        // 页面加载时检查登录状态
+        document.addEventListener('DOMContentLoaded', function() {
+            const token = localStorage.getItem('token');
+            console.log('Token from localStorage:', token);
+            const userMenu = document.getElementById('user-menu');
+
+            if (token) {
+                // 如果有token，验证token是否有效
+                fetch(`${API_BASE_URL}/api/v1/auth/me`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                })
+                .then(response => {
+                    console.log('Token verification response status:', response.status);
+                    if (response.ok) {
+                        // token有效，显示用户信息并跳转到front.html
+                        return response.json();
+                    } else {
+                        // token无效，清除token
+                        localStorage.removeItem('token');
+                        throw new Error('Invalid token');
+                    }
+                })
+                .then(data => {
+                    const username = data.username;
+                    document.getElementById('username-text').textContent = username;
+                    const avatar = document.getElementById('user-avatar');
+                    avatar.textContent = username.charAt(0).toUpperCase();
+                    userMenu.style.display = 'flex';
+                    // 登录成功后直接跳转到front.html
+                    window.location.href = 'front.html';
+                })
+                .catch(error => {
+                    console.error('Error verifying token:', error);
+                    localStorage.removeItem('token');
+                });
+            }
+
+            // 添加功能卡片点击事件
+            document.querySelectorAll('.feature').forEach(feature => {
+                feature.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const featureType = this.getAttribute('data-feature');
+                    const token = localStorage.getItem('token');
+
+                    if (!token) {
+                        // 如果未登录，跳转到登录页面
+                        window.location.href = 'login.html';
+                        return;
+                    }
+
+                    // 已登录，跳转到对应功能页面
+                    // 使用 sessionStorage 临时存储一个标记，表示这是正常的功能跳转
+                    sessionStorage.setItem('isFeatureNavigation', 'true');
+                    window.location.href = `front.html?feature=${featureType}`;
+                });
+            });
+
+            // 添加退出登录功能
+            document.getElementById('logout-button').addEventListener('click', function() {
+                localStorage.removeItem('token');
+                window.location.href = 'login.html';
+            });
+        });
+</script>
+</body>
+</html>

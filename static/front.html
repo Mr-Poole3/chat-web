@@ -1,0 +1,3209 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Tools</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css"
+          integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg=="
+          crossorigin="anonymous" referrerpolicy="no-referrer"/>
+    <link rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/atom-one-dark.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/javascript.min.js"></script>
+    <!-- 添加更多语言支持 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/java.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/cpp.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/csharp.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/css.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/xml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/markdown.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://unpkg.com/@dotlottie/player-component@2.7.12/dist/dotlottie-player.mjs" type="module"></script>
+    <!-- API请求修复脚本（必须放在最前面） -->
+    <script>
+        // 定义全局API基础URL
+        const API_BASE_URL = window.location.origin; // 自动使用当前域名
+        console.log('设置API基础URL:', API_BASE_URL);
+        
+        // 立即拦截并修复所有fetch请求
+        (function() {
+            const originalFetch = window.fetch;
+            window.fetch = function(url, options) {
+                // 替换所有localhost请求为当前域名
+                if (typeof url === 'string') {
+                    if (url.includes('localhost')) {
+                        const newUrl = url.replace(/https?:\/\/localhost(:\d+)?/g, API_BASE_URL);
+                        console.log('修复API请求:', url, '->', newUrl);
+                        url = newUrl;
+                    } else if (url.startsWith('/api')) {
+                        url = `${API_BASE_URL}${url}`;
+                        console.log('添加基础URL:', url);
+                    }
+                }
+                return originalFetch(url, options);
+            };
+            console.log('已安装全局fetch拦截器');
+            
+            // 修复XHR请求
+            const originalOpen = XMLHttpRequest.prototype.open;
+            XMLHttpRequest.prototype.open = function(method, url, ...args) {
+                if (typeof url === 'string') {
+                    if (url.includes('localhost')) {
+                        const newUrl = url.replace(/https?:\/\/localhost(:\d+)?/g, API_BASE_URL);
+                        console.log('修复XHR请求:', url, '->', newUrl);
+                        url = newUrl;
+                    } else if (url.startsWith('/api')) {
+                        url = `${API_BASE_URL}${url}`;
+                        console.log('XHR添加基础URL:', url);
+                    }
+                }
+                return originalOpen.call(this, method, url, ...args);
+            };
+            console.log('已安装XHR拦截器');
+        })();
+    </script>
+    <style>
+        /* 全局样式 */
+        body {
+            font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            background-color: #0f1117;
+            margin: 0;
+            padding: 0;
+            color: #e0e0ff;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        /* 布局 */
+        .container {
+            display: flex;
+            height: 100vh;
+            width: 100%;
+            overflow: hidden; /* Prevent overall page overflow */
+        }
+
+        /* 侧边栏 */
+        .sidebar {
+            width: 260px;
+            min-width: 260px; /* Add this to prevent shrinking */
+            background-color: #161923;
+            border-right: 1px solid rgba(99, 102, 241, 0.2);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+            padding-bottom: 20px;
+            box-shadow: 0 0 20px rgba(76, 78, 229, 0.1);
+        }
+
+        .sidebar a {
+            display: block;
+            padding: 15px 20px;
+            color: #e0e0ff;
+            text-decoration: none;
+            border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+            transition: all 0.3s ease;
+        }
+
+        .sidebar a:hover {
+            background-color: rgba(99, 102, 241, 0.1);
+            transform: translateX(5px);
+        }
+
+        .sidebar a:last-child {
+            border-bottom: none;
+        }
+
+        .sidebar-header {
+            padding: 20px;
+            text-align: center;
+            font-size: 22px;
+            font-weight: 600;
+            border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+            background: linear-gradient(90deg, #4c4ed9, #6366f1);
+            color: white;
+            letter-spacing: 1px;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+
+        .sidebar-tools {
+            padding-top: 10px;
+        }
+
+        .tool-item {
+            display: flex;
+            align-items: center;
+            padding: 12px 20px;
+            color: #e0e0ff;
+            text-decoration: none;
+            border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+            transition: all 0.3s ease;
+            cursor: pointer;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .tool-item:hover {
+            background-color: rgba(99, 102, 241, 0.1);
+        }
+
+        .tool-item.active {
+            background-color: rgba(99, 102, 241, 0.2);
+            border-left: 4px solid #6366f1;
+        }
+
+        .tool-item:hover::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.1), transparent);
+            animation: shine 1.5s infinite;
+        }
+
+        @keyframes shine {
+            0% {
+                transform: translateX(-100%);
+            }
+            100% {
+                transform: translateX(100%);
+            }
+        }
+
+        .tool-item img {
+            width: 28px;
+            height: 28px;
+            margin-right: 15px;
+            object-fit: contain;
+            filter: drop-shadow(0 0 3px rgba(99, 102, 241, 0.5));
+        }
+
+        .tool-item span {
+            font-size: 16px;
+            font-weight: 500;
+        }
+
+        /* 主内容区 */
+        .main-content {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            background-color: #0f1117;
+            background-image: radial-gradient(circle at 25% 25%, rgba(99, 102, 241, 0.05) 1%, transparent 10%),
+            radial-gradient(circle at 75% 75%, rgba(99, 102, 241, 0.05) 1%, transparent 10%);
+            background-size: 60px 60px;
+            overflow-x: hidden; /* Prevent horizontal overflow */
+            width: calc(100% - 260px); /* Account for sidebar width */
+        }
+
+        /* 用户菜单样式 */
+        .user-menu {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 8px 16px;
+            border-radius: 12px;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        .user-menu:hover {
+            background: rgba(255, 255, 255, 1);
+            border-color: rgba(99, 102, 241, 0.4);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.1);
+        }
+
+        #username-display {
+            color: #1e293b;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 500;
+        }
+
+        .user-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #4c4ed9, #6366f1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 18px;
+            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .user-avatar:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+        }
+
+        #username-text {
+            color: #1e293b;
+            font-weight: 500;
+            letter-spacing: 0.3px;
+        }
+
+        .logout-button {
+            background: transparent;
+            border: 1px solid rgba(99, 102, 241, 0.4);
+            color: #4c4ed9;
+            padding: 6px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        .logout-button:hover {
+            background-color: rgba(99, 102, 241, 0.1);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.1);
+        }
+
+        .logout-button i {
+            font-size: 14px;
+            transition: transform 0.3s ease;
+        }
+
+        .logout-button:hover i {
+            transform: translateX(2px);
+        }
+
+        /* 天汇AI区域样式 */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 25px;
+            border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+            position: relative;
+            background-color: rgba(22, 25, 35, 0.7);
+            backdrop-filter: blur(10px);
+        }
+
+        #model-selector {
+            background-color: #1e2130;
+            color: #e0e0ff;
+            border: 1px solid rgba(99, 102, 241, 0.4);
+            border-radius: 6px;
+            padding: 8px 12px;
+            margin-left: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 10px rgba(99, 102, 241, 0.1);
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236366f1' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+            padding-right: 30px;
+        }
+
+        #model-selector:focus {
+            outline: none;
+            border-color: #6366f1;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.3);
+        }
+
+        #model-selector option {
+            background-color: #1e2130;
+            color: #e0e0ff;
+        }
+
+        h1 {
+            font-size: 20px;
+            font-weight: 600;
+            margin: 0;
+            text-align: center;
+            background: linear-gradient(90deg, #4c4ed9, #6366f1);
+            -webkit-background-clip: text;
+            background-clip: text; /* 添加标准属性 */
+            -webkit-text-fill-color: transparent;
+            letter-spacing: 1px;
+        }
+
+        .chat-container {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            box-sizing: border-box;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(99, 102, 241, 0.5) #1e2130;
+            width: 100%;
+            max-width: 1200px; /* 限制最大宽度 */
+            margin: 0 auto; /* 居中显示 */
+        }
+
+        .chat-container::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        .chat-container::-webkit-scrollbar-track {
+            background: #1e2130;
+            border-radius: 4px;
+        }
+
+        .chat-container::-webkit-scrollbar-thumb {
+            background-color: rgba(99, 102, 241, 0.5);
+            border-radius: 4px;
+        }
+
+        .input-container {
+            padding: 20px;
+            border-top: 1px solid rgba(99, 102, 241, 0.2);
+            background-color: rgba(22, 25, 35, 0.7);
+            backdrop-filter: blur(10px);
+            position: sticky;
+            bottom: 0;
+        }
+
+        .input-box {
+            display: flex;
+            align-items: flex-end; /* 新增：使子元素底部对齐 */
+            position: relative;
+            max-width: 800px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        #user-input {
+            width: 100%;
+            padding: 14px 50px; /* 保持左右内边距 */
+            border: 1px solid rgba(99, 102, 241, 0.4);
+            border-radius: 8px;
+            background-color: #1e2130;
+            color: #e0e0ff;
+            font-size: 16px;
+            line-height: 1.5;
+            resize: none;
+            min-height: 24px;
+            height: auto;
+            max-height: 200px;
+            overflow-y: auto; /* 恢复：允许滚动 */
+            transition: all 0.3s ease;
+            box-shadow: 0 0 15px rgba(99, 102, 241, 0.1);
+            box-sizing: border-box;
+            scrollbar-width: none; /* 新增：隐藏 Firefox 滚动条 */
+            -ms-overflow-style: none;  /* 新增：隐藏 IE/Edge 滚动条 */
+        }
+
+        /* 新增：隐藏 WebKit 浏览器滚动条 */
+        #user-input::-webkit-scrollbar {
+            display: none;
+        }
+
+        #user-input:focus {
+            outline: none;
+            border-color: #6366f1;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.3);
+        }
+
+        #send-button {
+            position: absolute;
+            right: 12px;
+            bottom: 14px; /* 修改：调整底部对齐 */
+            background-color: transparent;
+            color: #6366f1;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px;
+            transition: all 0.3s ease;
+        }
+
+        /* 新增左侧新建聊天按钮样式 */
+        #new-chat-button {
+            position: absolute;
+            left: 12px;
+            bottom: 14px; /* 修改：调整底部对齐 */
+            background-color: transparent;
+            color: #6366f1;
+            border: none;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 8px;
+            transition: all 0.3s ease;
+            z-index: 2;
+        }
+
+        #new-chat-button:hover {
+            background-color: rgba(99, 102, 241, 0.1);
+            transform: scale(1.1);
+        }
+
+        #new-chat-button svg {
+            width: 18px;
+            height: 18px;
+        }
+
+        #send-button:hover {
+            background-color: rgba(99, 102, 241, 0.1);
+            transform: scale(1.1);
+        }
+
+        #send-button svg {
+            width: 18px;
+            height: 18px;
+            fill: #6366f1;
+        }
+
+        .message {
+            display: flex;
+            margin-bottom: 20px;
+            max-width: 100%;
+            word-wrap: break-word;
+            align-items: flex-start;
+        }
+
+        .message-content {
+            line-height: 1.6;
+            background-color: rgba(30, 33, 48, 0.7);
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            position: relative;
+            max-width: 65%;
+            width: auto;
+            overflow-wrap: break-word;
+        }
+
+        .user-message {
+            flex-direction: row-reverse;
+            justify-content: flex-start;
+        }
+
+        .user-message .message-content {
+            background-color: rgba(99, 102, 241, 0.2);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            margin-right: 16px;
+            margin-left: 0;
+        }
+
+        .bot-message {
+            justify-content: flex-start;
+        }
+
+        .bot-message .message-content {
+            background-color: rgba(30, 33, 48, 0.7);
+            border: 1px solid rgba(30, 33, 48, 0.8);
+            margin-left: 16px;
+            max-width: 85%;
+        }
+
+        .avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+
+        .user-avatar {
+            background-color: rgba(99, 102, 241, 0.2);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+        }
+
+        .bot-avatar {
+            background-color: transparent;
+            border: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: visible;
+            position: relative;
+            width: auto;
+            height: auto;
+        }
+
+        .bot-avatar dotlottie-player {
+            width: 450px;
+            height: 450px;
+        }
+
+        .welcome-screen {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            text-align: center;
+            padding: 0 20px;
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        .welcome-title {
+            font-size: 36px;
+            margin-bottom: 20px;
+            background: linear-gradient(90deg, #4c4ed9, #6366f1);
+            -webkit-background-clip: text;
+            background-clip: text; /* 添加标准属性 */
+            -webkit-text-fill-color: transparent;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-shadow: 0 2px 10px rgba(99, 102, 241, 0.3);
+        }
+
+        .examples-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            max-width: 900px;
+            margin-top: 40px;
+        }
+
+        .example-card {
+            background-color: rgba(30, 33, 48, 0.7);
+            border-radius: 10px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .example-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+            border-color: rgba(99, 102, 241, 0.5);
+        }
+
+        .example-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, #4c4ed9, #6366f1);
+            transform: scaleX(0);
+            transform-origin: left;
+            transition: transform 0.3s ease;
+        }
+
+        .example-card:hover::before {
+            transform: scaleX(1);
+        }
+
+        .example-title {
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #6366f1;
+            font-size: 18px;
+        }
+
+        .example-text {
+            color: #a5b4fc;
+            font-size: 14px;
+        }
+
+        code {
+            background-color: rgba(22, 25, 35, 0.7);
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-family: 'JetBrains Mono', 'Fira Code', 'Menlo', 'Monaco', 'Courier New', monospace;
+            color: #a5b4fc;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        pre {
+            /* background-color: rgba(22, 25, 35, 0.9); */ /* Let highlight.js handle background */
+            border-radius: 8px;
+            padding: 16px;
+            overflow-x: auto; /* Allow horizontal scrolling for code */
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            max-width: 100%;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        pre code {
+            white-space: pre;
+        }
+
+        .error-message {
+            color: #ef4444;
+        }
+
+        .typing-indicator {
+            color: #a5b4fc;
+            display: flex;
+            align-items: center;
+        }
+
+        .typing-indicator::before {
+            content: '思考中';
+        }
+
+        /* 删除原有的旋转图标，改为波浪动画 */
+        .typing-indicator .wave-dots {
+            display: flex;
+            align-items: center;
+            margin-left: 8px;
+        }
+        
+        .typing-indicator .wave-dots .dot {
+            display: inline-block;
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background-color: #a5b4fc;
+            margin: 0 2px;
+            animation: waveDot 1.2s infinite ease-in-out;
+        }
+        
+        .typing-indicator .wave-dots .dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+        
+        .typing-indicator .wave-dots .dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+        
+        @keyframes waveDot {
+            0%, 60%, 100% {
+                transform: translateY(0);
+            }
+            30% {
+                transform: translateY(-6px);
+            }
+        }
+
+        /* 添加思考内容的样式 */
+        .thinking-content {
+            background-color: rgba(30, 33, 48, 0.5);
+            border-left: 3px solid #6366f1;
+            padding: 10px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+            font-family: 'JetBrains Mono', 'Fira Code', 'Menlo', 'Monaco', 'Courier New', monospace;
+        }
+
+        .thinking-content summary {
+            cursor: pointer;
+            color: #a5b4fc;
+            font-weight: 600;
+            user-select: none;
+            display: flex;
+            align-items: center;
+        }
+
+        .thinking-content summary:hover {
+            color: #6366f1;
+        }
+
+        .thinking-content summary::before {
+            content: "▶";
+            margin-right: 8px;
+            font-size: 12px;
+            transition: transform 0.2s;
+        }
+
+        .thinking-content details[open] summary::before {
+            transform: rotate(90deg);
+        }
+
+        .thinking-content details[open] div {
+            margin-top: 10px;
+            padding: 0; /* Remove padding from div, add to pre */
+            background-color: transparent; /* Make div transparent */
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+
+        /* Style for the <pre> tag specifically inside thinking-content */
+        .thinking-content pre {
+            padding: 10px; /* Add padding here */
+            margin: 0; /* Remove default margin */
+            background-color: rgba(22, 25, 35, 0.7); /* Background for pre */
+            border-radius: 5px;
+            white-space: pre-wrap; /* Preserve whitespace and wrap lines */
+            word-wrap: break-word; /* Break long words */
+            font-family: 'JetBrains Mono', 'Fira Code', 'Menlo', 'Monaco', 'Courier New', monospace; /* Monospace font */
+            font-size: 0.9em; /* Slightly smaller font */
+            color: #c3c7e7; /* Text color for thoughts */
+            border: 1px solid rgba(99, 102, 241, 0.1); /* Subtle border */
+        }
+
+        /* 新增的样式 */
+        .details-container {
+            border: 1px solid #555;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+
+        .details-container summary {
+            background-color: #333;
+            padding: 10px;
+            cursor: pointer;
+            list-style: none;
+            margin: 0;
+        }
+
+        .details-container summary::before {
+            content: "▶️ "; /* 使用Unicode字符实现展开/收起图标 */
+            display: inline-block;
+            transition: transform 0.2s;
+        }
+
+        .details-container[open] summary::before {
+            transform: rotate(90deg);
+        }
+
+        .details-container p {
+            padding: 10px;
+        }
+
+        /* 修复 Markdown 中列表和代码块的间距 */
+        .message-content ul, .message-content ol {
+            margin-top: 0;
+            margin-bottom: 0;
+            padding-left: 20px; /* 调整列表缩进 */
+        }
+
+        .message-content pre {
+            margin-top: 0;
+            margin-bottom: 0;
+        }
+
+        /* 响应式设计 */
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: row; /* 改为row以保持侧边栏在左侧 */
+            }
+
+            .sidebar {
+                position: fixed; /* 固定定位 */
+                left: -260px; /* 初始隐藏在左侧屏幕外 */
+                top: 0;
+                height: 100vh;
+                width: 260px;
+                z-index: 1000;
+                transition: left 0.3s ease; /* 动画从左侧滑入滑出 */
+                overflow-y: auto;
+            }
+
+            .sidebar.expanded {
+                left: 0; /* 展开时显示出来 */
+                box-shadow: 2px 0 15px rgba(0, 0, 0, 0.3);
+            }
+            
+            /* 添加一个半透明遮罩层，当侧边栏展开时显示 */
+            .sidebar-overlay {
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background-color: rgba(0, 0, 0, 0.5);
+                z-index: 999;
+            }
+            
+            .sidebar-overlay.active {
+                display: block;
+            }
+
+            .sidebar-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                padding: 15px;
+                font-size: 18px;
+            }
+
+            /* 添加一个菜单图标按钮，固定在屏幕左上角 */
+            .mobile-menu-button {
+                display: flex;
+                position: fixed;
+                top: 10px;
+                left: 10px;
+                width: 36px;
+                height: 36px;
+                background-color: rgba(99, 102, 241, 0.2);
+                border-radius: 50%;
+                align-items: center;
+                justify-content: center;
+                z-index: 99;
+                cursor: pointer;
+                box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+            }
+            
+            .mobile-menu-button i {
+                color: #e0e0ff;
+                font-size: 18px;
+            }
+
+            .main-content {
+                width: 100%; /* 内容区域占满宽度 */
+                margin-left: 0; /* 不需要给侧边栏留空间 */
+            }
+
+            .message-content {
+                max-width: calc(100% - 40px); /* 较小的边距 */
+                font-size: 14px; /* 稍小的文本 */
+            }
+
+            .avatar {
+                width: 30px;
+                height: 30px;
+                min-width: 30px;
+                font-size: 16px;
+            }
+            
+            .header {
+                padding: 10px 15px;
+                padding-left: 55px; /* 为菜单按钮留空间 */
+            }
+            
+            h1 {
+                font-size: 16px;
+            }
+            
+            #model-selector {
+                font-size: 12px;
+                padding: 6px 8px;
+                padding-right: 24px;
+                background-position: right 6px center;
+            }
+            
+            .new-chat-icon {
+                width: 30px;
+                height: 30px;
+            }
+            
+            .welcome-title {
+                font-size: 24px;
+            }
+            
+            .examples-container {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 576px) {
+            .input-container {
+                padding: 10px;
+            }
+            
+            #user-input {
+                padding: 10px 45px; /* 调整 padding 以适应按钮 */
+                font-size: 14px;
+                min-height: 20px; /* 调整最小高度 */
+            }
+            
+            #send-button {
+                right: 8px;
+                bottom: 10px; /* 调整移动端底部对齐 */
+                padding: 6px;
+            }
+            
+            .message {
+                margin-bottom: 15px;
+            }
+            
+            .message-content {
+                padding: 10px;
+                font-size: 14px;
+                max-width: calc(100% - 30px);
+            }
+            
+            .tool-item {
+                padding: 10px 15px;
+            }
+            
+            .tool-item img {
+                width: 22px;
+                height: 22px;
+                margin-right: 10px;
+            }
+            
+            .tool-item span {
+                font-size: 14px;
+            }
+            
+            .chat-container {
+                padding: 15px 10px;
+            }
+        }
+
+        /* 添加适应更小屏幕的样式 */
+        @media (max-width: 400px) {
+            .header {
+                flex-wrap: wrap;
+                justify-content: center;
+                gap: 10px;
+            }
+            
+            #model-selector {
+                order: 3;
+                width: 100%;
+                margin: 5px 0 0 0;
+            }
+            
+            h1 {
+                order: 1;
+            }
+            
+            .new-chat-icon {
+                order: 2;
+                margin-left: 0;
+            }
+        }
+
+        .new-chat-btn {
+            margin: 15px;
+            padding: 10px;
+            background-color: #40414F;
+            border: 1px solid #4E4F60;
+            border-radius: 5px;
+            color: #ECECF1;
+            cursor: pointer;
+            text-align: center;
+        }
+
+        .new-chat-btn:hover {
+            background-color: #4E4F60;
+        }
+
+        .chat-history {
+            flex-grow: 1;
+            padding: 12px 15px;
+            margin-bottom: 0;
+            border-radius: 5px;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            border-bottom: 1px solid #4E4F60;
+        }
+
+        .chat-history:hover {
+            background-color: #2D2E3A;
+        }
+
+        .chat-history.active {
+            background-color: #40414F;
+        }
+
+        .chat-history:last-child {
+            border-bottom: none;
+            margin-bottom: 5px;
+        }
+
+        /* 工具页面样式（初始隐藏） */
+        .tool-page {
+            display: none;
+            padding: 20px;
+            height: 100%;
+            width: 100%;
+            box-sizing: border-box;
+            overflow: auto;
+            position: relative;
+        }
+
+        /* 工具页面中的iframe样式 */
+        .tool-page iframe {
+            width: 100%; 
+            height: 100vh;
+            border: none;
+            border-radius: 0;
+            box-shadow: none;
+            background-color: white;
+            transition: all 0.3s ease;
+            max-width: 100%;
+            overflow: hidden;
+            display: block;
+            margin: 0;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        #ai-chat-page {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        /*  加载动画  */
+        .loading-spinner {
+            border: 5px solid rgba(255, 255, 255, 0.3);
+            border-top: 5px solid #fff;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto; /* 居中 */
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* 修复代码块的行高和字体大小 */
+        .message-content pre code {
+            line-height: 1.4;
+            font-size: 14px;
+        }
+
+        /* PDF Converter 工具样式 */
+        .tool-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .tool-description {
+            color: #a5b4fc;
+            margin-top: 10px;
+        }
+
+        .converter-container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: rgba(30, 33, 48, 0.7);
+            border-radius: 10px;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .upload-area {
+            padding: 40px 20px;
+            border: 2px dashed rgba(99, 102, 241, 0.4);
+            border-radius: 8px;
+            text-align: center;
+            transition: all 0.3s ease;
+            background-color: rgba(22, 25, 35, 0.5);
+            cursor: pointer;
+        }
+
+        .upload-area:hover {
+            border-color: #6366f1;
+            background-color: rgba(99, 102, 241, 0.05);
+        }
+
+        .upload-area.drag-over {
+            border-color: #6366f1;
+            background-color: rgba(99, 102, 241, 0.1);
+            transform: scale(1.02);
+        }
+
+        .upload-icon {
+            font-size: 48px;
+            color: #6366f1;
+            margin-bottom: 15px;
+        }
+
+        .upload-text {
+            color: #e0e0ff;
+            margin-bottom: 20px;
+        }
+
+        .upload-button {
+            display: inline-block;
+            padding: 10px 20px;
+            background: linear-gradient(90deg, #4c4ed9, #6366f1);
+            color: white;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        .upload-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(99, 102, 241, 0.3);
+        }
+
+        .file-info {
+            margin-top: 15px;
+            color: #a5b4fc;
+            font-size: 14px;
+        }
+
+        .conversion-progress {
+            margin-top: 30px;
+            text-align: center;
+        }
+
+        .progress-bar-container {
+            height: 10px;
+            background-color: rgba(22, 25, 35, 0.7);
+            border-radius: 5px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+
+        .progress-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, #4c4ed9, #6366f1);
+            border-radius: 5px;
+            transition: width 0.3s ease;
+        }
+
+        .progress-text {
+            color: #a5b4fc;
+            font-size: 14px;
+        }
+
+        .conversion-result, .conversion-error {
+            margin-top: 30px;
+            text-align: center;
+            padding: 20px;
+            border-radius: 8px;
+        }
+
+        .conversion-result {
+            background-color: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .conversion-error {
+            background-color: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .result-icon, .error-icon {
+            font-size: 48px;
+            margin-bottom: 15px;
+        }
+
+        .result-icon {
+            color: #10b981;
+        }
+
+        .error-icon {
+            color: #ef4444;
+        }
+
+        .download-button, .retry-button {
+            display: inline-block;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 500;
+            margin-top: 15px;
+        }
+
+        .download-button {
+            background: linear-gradient(90deg, #059669, #10b981);
+            color: white;
+            text-decoration: none;
+        }
+
+        .retry-button {
+            background: linear-gradient(90deg, #dc2626, #ef4444);
+            color: white;
+            border: none;
+        }
+
+        .download-button:hover, .retry-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        /* PDF Chat Interface Styles */
+        .pdf-chat-container {
+            max-width: 600px;
+            margin: 30px auto 0;
+            border-radius: 10px;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            background-color: rgba(30, 33, 48, 0.7);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .pdf-chat-header {
+            padding: 15px 20px;
+            border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+            background-color: rgba(22, 25, 35, 0.7);
+            position: relative;
+            cursor: pointer;
+        }
+
+        .pdf-chat-header h3 {
+            margin: 0 0 5px;
+            color: #e0e0ff;
+            font-size: 18px;
+        }
+
+        .pdf-chat-header p {
+            margin: 0;
+            color: #a5b4fc;
+            font-size: 14px;
+        }
+
+        .pdf-chat-messages {
+            padding: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .pdf-chat-message {
+            display: flex;
+            align-items: flex-start;
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        .pdf-chat-message.user {
+            flex-direction: row-reverse;
+        }
+
+        .pdf-chat-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .pdf-chat-avatar.bot-avatar {
+            background: linear-gradient(135deg, #10b981, #059669);
+        }
+
+        .pdf-chat-avatar.user-avatar {
+            background: linear-gradient(135deg, #4c4ed9, #6366f1);
+        }
+
+        .pdf-chat-content {
+            margin: 0 10px;
+            padding: 10px 15px;
+            border-radius: 8px;
+            background-color: rgba(30, 33, 48, 0.7);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            max-width: 80%;
+        }
+
+        .pdf-chat-message.user .pdf-chat-content {
+            background-color: rgba(99, 102, 241, 0.1);
+            border-color: rgba(99, 102, 241, 0.3);
+        }
+
+        .pdf-chat-input-container {
+            display: flex;
+            padding: 10px 15px;
+            border-top: 1px solid rgba(99, 102, 241, 0.2);
+            background-color: rgba(22, 25, 35, 0.7);
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        #pdf-chat-input {
+            flex: 1;
+            padding: 10px 15px;
+            border: 1px solid rgba(99, 102, 241, 0.4);
+            border-radius: 8px;
+            background-color: #1e2130;
+            color: #e0e0ff;
+            font-size: 14px;
+            resize: none;
+            max-height: 100px;
+            overflow-y: auto;
+        }
+
+        #pdf-chat-input:focus {
+            outline: none;
+            border-color: #6366f1;
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.3);
+        }
+
+        #pdf-chat-send {
+            background-color: transparent;
+            color: #6366f1;
+            border: none;
+            border-radius: 50%;
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-left: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        #pdf-chat-send:hover {
+            background-color: rgba(99, 102, 241, 0.1);
+            transform: scale(1.1);
+        }
+
+        #pdf-chat-send svg {
+            width: 18px;
+            height: 18px;
+            fill: #6366f1;
+        }
+
+        @keyframes flash {
+            0% {
+                background-color: rgba(22, 25, 35, 0.9);
+            }
+            50% {
+                background-color: rgba(99, 102, 241, 0.3);
+            }
+            100% {
+                background-color: rgba(22, 25, 35, 0.9);
+            }
+        }
+
+        .chatpdf-message.system .chatpdf-message-content {
+            background-color: rgba(16, 185, 129, 0.1);
+            border-top-left-radius: 0;
+        }
+
+        .chatpdf-input-container {
+            display: flex;
+            padding: 15px 20px;
+            border-top: 1px solid rgba(99, 102, 241, 0.2);
+            background-color: rgba(22, 25, 35, 0.7);
+        }
+
+        #chatpdf-input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 1px solid rgba(99, 102, 241, 0.4);
+            border-radius: 8px;
+            background-color: rgba(30, 33, 48, 0.7);
+            color: #e0e0ff;
+            font-size: 14px;
+            resize: none;
+            height: 24px;
+            max-height: 120px;
+            overflow-y: auto;
+        }
+
+        #chatpdf-input:focus {
+            outline: none;
+            border-color: #6366f1;
+            box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.3);
+        }
+
+        #chatpdf-input:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+
+        #chatpdf-send {
+            background-color: #6366f1;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-left: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        #chatpdf-send:hover:not(:disabled) {
+            background-color: #4f46e5;
+            transform: translateY(-2px);
+        }
+
+        #chatpdf-send:disabled {
+            background-color: rgba(99, 102, 241, 0.4);
+            cursor: not-allowed;
+        }
+
+        #chatpdf-send svg {
+            width: 20px;
+            height: 20px;
+            fill: currentColor;
+        }
+
+        /* Loading animation for PDF processing */
+        .chatpdf-loading {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .chatpdf-loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(99, 102, 241, 0.3);
+            border-radius: 50%;
+            border-top-color: #6366f1;
+            animation: chatpdf-spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+
+        @keyframes chatpdf-spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        .chatpdf-loading-text {
+            color: #a5b4fc;
+            font-size: 16px;
+            margin: 0;
+        }
+
+        .chatpdf-loading-subtext {
+            color: #8388e8;
+            font-size: 14px;
+            margin: 10px 0 0;
+        }
+
+        /* Responsive design */
+        @media (max-width: 900px) {
+            .chatpdf-main {
+                flex-direction: column;
+                height: auto;
+            }
+
+            .chatpdf-sidebar {
+                width: 100%;
+                border-right: none;
+                border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+                max-height: 300px;
+            }
+
+            .chatpdf-chat-section {
+                height: calc(100vh - 500px);
+                min-height: 400px;
+            }
+        }
+
+        /* Add this new style for the toggle button */
+        .pdf-chat-toggle {
+            position: absolute;
+            right: 15px;
+            top: 15px;
+            cursor: pointer;
+            color: #a5b4fc;
+            transition: all 0.3s ease;
+        }
+
+        .pdf-chat-toggle:hover {
+            color: #6366f1;
+        }
+
+        /* Add this style for minimized chat */
+        .pdf-chat-container.minimized .pdf-chat-messages,
+        .pdf-chat-container.minimized .pdf-chat-input-container {
+            display: none;
+        }
+
+        .pdf-chat-header {
+            position: relative;
+            cursor: pointer;
+        }
+
+        /* Ensure tables don't overflow */
+        table {
+            max-width: 100%;
+            display: block;
+            overflow-x: auto;
+            border-collapse: collapse;
+        }
+
+        /* 确保消息容器正确处理长内容 */
+        .message {
+            display: flex;
+            margin-bottom: 20px;
+            max-width: 100%;
+            word-wrap: break-word;
+            align-items: flex-start;
+        }
+
+        /* 确保头像不会被挤压 */
+        .avatar {
+            min-width: 40px;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            flex-shrink: 0; /* 防止头像缩小 */
+        }
+
+        /* 确保代码块不会溢出 */
+        .message-content pre {
+            max-width: 100%;
+            overflow-x: auto;
+            background-color: #1e2130; /* 统一背景色 */
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            margin: 10px 0;
+        }
+        
+        /* 统一code标签样式，避免语法高亮 */
+        .message-content code, pre code {
+            font-family: 'JetBrains Mono', 'Fira Code', 'Menlo', 'Monaco', 'Courier New', monospace;
+            color: #e0e0ff; /* 使用统一的文本颜色 */
+            background-color: transparent; /* 移除内联代码背景 */
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            border: none;
+            padding: 0;
+        }
+        
+        /* 移除所有hljs相关样式 */
+        pre, code, .hljs, [class^="language-"] {
+            color: #e0e0ff !important; /* 使用统一的文本颜色 */
+            background-color: transparent !important;
+        }
+        
+        /* 内联代码样式 */
+        :not(pre) > code {
+            background-color: rgba(22, 25, 35, 0.7);
+            padding: 2px 6px;
+            border-radius: 4px;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+        }
+
+        /* 确保长单词或URL能够正确换行 */
+        .message-content p {
+            overflow-wrap: break-word;
+            word-wrap: break-word;
+            word-break: break-word;
+            hyphens: auto;
+        }
+
+        .thought-process {
+            padding: 10px;
+            background-color: rgba(99, 102, 241, 0.1);
+            border-radius: 6px;
+            margin: 10px 0;
+            font-size: 0.9em;
+            color: #a5b4fc;
+        }
+
+        .details-container {
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            border-radius: 8px;
+            margin: 10px 0;
+            background-color: rgba(22, 25, 35, 0.7);
+        }
+
+        .details-container summary {
+            padding: 10px;
+            cursor: pointer;
+            user-select: none;
+            color: #6366f1;
+            font-weight: 500;
+        }
+
+        .details-container summary:hover {
+            background-color: rgba(99, 102, 241, 0.1);
+        }
+
+        .details-container summary::marker {
+            color: #6366f1;
+        }
+
+        .details-container[open] summary {
+            border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+        }
+
+        /* PDF Converter 工具响应式样式 */
+        @media (max-width: 768px) {
+            .converter-container {
+                padding: 15px;
+            }
+            
+            .upload-area {
+                padding: 30px 15px;
+            }
+            
+            .upload-icon {
+                font-size: 36px;
+                margin-bottom: 10px;
+            }
+            
+            .upload-text {
+                margin-bottom: 15px;
+                font-size: 14px;
+            }
+            
+            .upload-button {
+                padding: 8px 16px;
+                font-size: 14px;
+            }
+            
+            .pdf-chat-container {
+                margin: 20px auto 0;
+            }
+            
+            .pdf-chat-header h3 {
+                font-size: 16px;
+            }
+            
+            .pdf-chat-header p {
+                font-size: 12px;
+            }
+            
+            .pdf-chat-content {
+                max-width: 85%;
+                font-size: 14px;
+            }
+            
+            .pdf-chat-avatar {
+                width: 28px;
+                height: 28px;
+            }
+        }
+
+        @media (max-width: 576px) {
+            .tool-page {
+                padding: 15px 10px;
+            }
+            
+            .tool-header h2 {
+                font-size: 20px;
+            }
+            
+            .tool-description {
+                font-size: 14px;
+            }
+            
+            .converter-container {
+                padding: 10px;
+            }
+            
+            .pdf-chat-container {
+                max-width: 100%;
+            }
+            
+            .pdf-chat-input-container {
+                padding: 8px 10px;
+            }
+            
+            #pdf-chat-input {
+                padding: 8px 10px;
+                font-size: 14px;
+            }
+            
+            #pdf-chat-send {
+                width: 32px;
+                height: 32px;
+            }
+            
+            /* 调整iframe的高度，确保在小屏幕上不会过高 */
+            #essay-page iframe,
+            #resume-page iframe {
+                height: calc(100vh - 150px);
+            }
+        }
+
+        /* 代码块和思考内容在移动设备上的优化 */
+        @media (max-width: 768px) {
+            code {
+                padding: 1px 4px;
+                font-size: 12px;
+            }
+            
+            pre {
+                padding: 10px;
+                margin: 10px 0;
+            }
+            
+            .message-content pre code {
+                font-size: 12px;
+                line-height: 1.3;
+            }
+            
+            .thinking-content {
+                padding: 8px;
+                margin-bottom: 10px;
+                font-size: 12px;
+            }
+            
+            .thinking-content summary {
+                font-size: 13px;
+            }
+            
+            .thinking-content details[open] div {
+                padding: 8px;
+                margin-top: 8px;
+            }
+            
+            .details-container summary {
+                padding: 8px;
+                font-size: 13px;
+            }
+            
+            .details-container p {
+                padding: 8px;
+                font-size: 13px;
+            }
+            
+            /* 确保表格在移动设备上可以水平滚动 */
+            .message-content table {
+                font-size: 12px;
+            }
+            
+            .message-content th,
+            .message-content td {
+                padding: 5px;
+            }
+        }
+
+        /* 触摸友好的交互优化 */
+        @media (hover: none) {
+            /* 在触摸设备上移除悬停效果，使用更大的触摸目标 */
+            .tool-item:hover {
+                background-color: transparent;
+                transform: none;
+            }
+            
+            .tool-item:hover::after {
+                animation: none;
+                display: none;
+            }
+            
+            .tool-item:active {
+                background-color: rgba(99, 102, 241, 0.1);
+            }
+            
+            .example-card:hover {
+                transform: none;
+                box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            }
+            
+            .example-card:active {
+                background-color: rgba(99, 102, 241, 0.05);
+            }
+            
+            #send-button:hover {
+                background-color: transparent;
+                transform: none;
+            }
+            
+            #send-button:active {
+                background-color: rgba(99, 102, 241, 0.1);
+            }
+            
+            .new-chat-icon:hover {
+                background-color: transparent;
+                transform: none;
+            }
+            
+            .new-chat-icon:active {
+                background-color: rgba(99, 102, 241, 0.2);
+            }
+            
+            /* 使用更大的触摸目标 */
+            .tool-item {
+                min-height: 48px;
+            }
+            
+            .pdf-chat-header {
+                min-height: 44px;
+            }
+            
+            #pdf-chat-send,
+            #send-button {
+                min-width: 44px;
+                min-height: 44px;
+            }
+        }
+
+        /* 提高移动设备上的性能 */
+        @media (max-width: 768px) {
+            /* 减少动画，提高性能 */
+            @keyframes shine-mobile {
+                from { opacity: 0.7; }
+                to { opacity: 1; }
+            }
+            
+            .tool-item:hover::after {
+                animation: shine-mobile 1.5s infinite alternate;
+                background: none;
+            }
+            
+            /* 使用更轻量级的背景 */
+            .main-content {
+                background-image: none;
+                background-color: #0f1117;
+            }
+        }
+
+        #essay-page iframe,
+        #resume-page iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* Basic Markdown Styling within message content */
+        .message-content h1,
+        .message-content h2,
+        .message-content h3,
+        .message-content h4,
+        .message-content h5,
+        .message-content h6 {
+            margin-top: 1em;
+            margin-bottom: 0.5em;
+            font-weight: 600;
+            line-height: 1.3;
+        }
+        .message-content h1 { font-size: 1.8em; }
+        .message-content h2 { font-size: 1.5em; }
+        .message-content h3 { font-size: 1.3em; }
+        .message-content h4 { font-size: 1.1em; }
+        .message-content h5 { font-size: 1em; }
+        .message-content h6 { font-size: 0.9em; }
+
+        .message-content p {
+            margin-bottom: 0.8em; /* Add some space between paragraphs */
+        }
+
+        .message-content ul,
+        .message-content ol {
+            margin-bottom: 0.8em;
+            padding-left: 2em; /* Ensure reasonable indentation */
+        }
+
+        .message-content li {
+            margin-bottom: 0.3em;
+        }
+
+        .message-content strong {
+            font-weight: bold;
+        }
+
+        .message-content em {
+            font-style: italic;
+        }
+
+        /* Ensure blockquotes have some styling */
+        .message-content blockquote {
+          margin: 1em 0;
+          padding: 0.5em 1em;
+          border-left: 4px solid rgba(99, 102, 241, 0.4);
+          background-color: rgba(30, 33, 48, 0.5); /* Slightly different background */
+          color: #c3c7e7; /* Adjust text color if needed */
+        }
+        .message-content blockquote p {
+            margin-bottom: 0; /* Remove extra margin for paragraphs inside blockquote */
+        }
+
+        /* Add spacing around horizontal rules */
+        .message-content hr {
+          border: none;
+          border-top: 1px solid rgba(99, 102, 241, 0.2);
+          margin: 1.5em 0;
+        }
+
+        /* New styles for Markdown container */
+        .message-content .markdown-container {
+          /* Reset default container styles if needed */
+        }
+
+        .message-content .markdown-container h1,
+        .message-content .markdown-container h2,
+        .message-content .markdown-container h3,
+        .message-content .markdown-container h4,
+        .message-content .markdown-container h5,
+        .message-content .markdown-container h6 {
+            color: #a5b4fc; /* Example: Adjust heading color */
+            margin-top: 1em;
+            margin-bottom: 0.5em;
+            font-weight: 600;
+            line-height: 1.3;
+        }
+        .message-content .markdown-container h1 { font-size: 1.6em; border-bottom: 1px solid rgba(99, 102, 241, 0.2); padding-bottom: 0.3em; }
+        .message-content .markdown-container h2 { font-size: 1.4em; border-bottom: 1px solid rgba(99, 102, 241, 0.1); padding-bottom: 0.2em; }
+        .message-content .markdown-container h3 { font-size: 1.2em; }
+        .message-content .markdown-container h4 { font-size: 1.1em; }
+
+        .message-content .markdown-container p {
+            margin-bottom: 0.8em;
+            line-height: 1.6;
+        }
+
+        .message-content .markdown-container ul,
+        .message-content .markdown-container ol {
+            margin-bottom: 0.8em;
+            padding-left: 2em;
+        }
+
+        .message-content .markdown-container li {
+            margin-bottom: 0.3em;
+        }
+
+        .message-content .markdown-container pre {
+            background-color: rgba(22, 25, 35, 0.9); /* Darker background for code blocks */
+            border-radius: 6px;
+            padding: 12px;
+            overflow-x: auto;
+            border: 1px solid rgba(99, 102, 241, 0.15);
+            margin: 1em 0;
+            max-width: 100%;
+        }
+
+        /* Ensure code inside pre maintains its font and color, without extra background */
+        .message-content .markdown-container pre code {
+            background-color: transparent !important; /* Override potential inline styles */
+            padding: 0;
+            border: none;
+            color: #c3c7e7; /* Slightly different color for code */
+            font-family: 'JetBrains Mono', 'Fira Code', 'Menlo', 'Monaco', 'Courier New', monospace;
+            font-size: 0.9em;
+            white-space: pre; /* Important for code formatting */
+            word-wrap: normal; /* Prevent wrapping inside pre */
+        }
+
+        /* Style for inline code (outside pre) */
+        .message-content .markdown-container :not(pre) > code {
+            background-color: rgba(99, 102, 241, 0.1);
+            padding: 2px 5px;
+            border-radius: 4px;
+            font-family: 'JetBrains Mono', 'Fira Code', 'Menlo', 'Monaco', 'Courier New', monospace;
+            font-size: 0.9em;
+            color: #a5b4fc;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+        }
+
+        .message-content .markdown-container blockquote {
+          margin: 1em 0;
+          padding: 0.5em 1em;
+          border-left: 4px solid #6366f1; /* Stronger border color */
+          background-color: rgba(30, 33, 48, 0.6);
+          color: #c3c7e7;
+        }
+        .message-content .markdown-container blockquote p {
+            margin-bottom: 0;
+        }
+
+        .message-content .markdown-container hr {
+          border: none;
+          border-top: 1px solid rgba(99, 102, 241, 0.3);
+          margin: 1.5em 0;
+        }
+
+        /* Table styling within markdown */
+        .message-content .markdown-container table {
+            width: auto; /* Let table size itself, but allow scroll */
+            max-width: 100%; /* Ensure it doesn't overflow container */
+            border-collapse: collapse;
+            margin: 1em 0;
+            display: block;
+            overflow-x: auto; /* Allow horizontal scrolling */
+            border: 1px solid rgba(99, 102, 241, 0.2);
+        }
+        .message-content .markdown-container th,
+        .message-content .markdown-container td {
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            padding: 8px 12px;
+            text-align: left;
+        }
+        .message-content .markdown-container th {
+            background-color: rgba(30, 33, 48, 0.8);
+            font-weight: 600;
+            color: #a5b4fc;
+        }
+        .message-content .markdown-container tr:nth-child(even) {
+            background-color: rgba(30, 33, 48, 0.3);
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <div class="sidebar">
+        <div class="sidebar-header">天汇AI
+        </div>
+        <div class="sidebar-tools">
+            <div class="tool-item active" onclick="loadChatTool()">
+                <img src="https://img.icons8.com/?size=100&id=37410&format=png&color=FFFFFF" alt="天汇AI">
+                <span>天汇AI</span>
+            </div>
+            <div class="tool-item" onclick="loadTool('pdf-to-word')">
+                <img src="https://img.icons8.com/?size=100&id=47812&format=png&color=FFFFFF" alt="PDF to Word">
+                <span>PDF 转换器</span>
+            </div>
+            <div class="tool-item" onclick="loadTool('essay')">
+                <img src="https://img.icons8.com/?size=100&id=42763&format=png&color=FFFFFF" alt="论文">
+                <span>论文辅助阅读</span>
+            </div>
+            <div class="tool-item" onclick="loadTool('ppt')">
+                <img src="https://img.icons8.com/?size=100&id=saSupsgVcmJe&format=png&color=FFFFFF" alt="PPT"/>
+                <span>Open Manus</span>
+            </div>
+            <div class="tool-item" onclick="loadTool('resume')">
+                <img src="https://img.icons8.com/?size=100&id=23877&format=png&color=FFFFFF" alt="简历">
+                <span>简历生成器</span>
+            </div>
+            <div class="tool-item" onclick="loadTool('flowchart')">
+                <img src="https://img.icons8.com/?size=100&id=1763&format=png&color=FFFFFF" alt="流程图">
+                <span>流程图生成器</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div id="ai-chat-page">
+            <div class="header">
+                <select id="model-selector">
+                    <option value="DeepSeek-R1" selected>DeepSeek-R1</option>
+                    <option value="DeepSeek-V3">DeepSeek-V3</option>
+                    <option value="gpt-4o-mini">ChatGPT 4o-mini</option>
+                    <option value="gpt-4o">ChatGPT 4o</option>
+                </select>
+                <div class="user-menu">
+                    <span id="username-display">
+                        <div class="user-avatar" id="user-avatar"></div>
+                        <span id="username-text"></span>
+                    </span>
+                    <button id="logout-button" class="logout-button">
+                        <i class="fas fa-sign-out-alt"></i> 退出
+                    </button>
+                </div>
+            </div>
+
+            <div class="chat-container" id="chat-container">
+                <div class="welcome-screen" id="welcome-screen">
+                    <h2 class="welcome-title">欢迎使用 天汇AI</h2>
+                    <!-- Lottie Animation -->
+                    <canvas id="lottie-canvas" width="150" height="150"></canvas>
+                    <script type="module">
+                        import { DotLottie } from "https://cdn.jsdelivr.net/npm/@lottiefiles/dotlottie-web/+esm";
+
+                        const dotLottie = new DotLottie({
+                            autoplay: true,
+                            loop: false,
+                            canvas: document.getElementById("lottie-canvas"),
+                            src: "https://lottie.host/075353b3-e4c2-4fa8-91ea-7f32563e1e3b/UQ3swQC3pC.lottie",
+                        });
+
+                        // 监听动画完成事件，然后回到第一帧
+                        dotLottie.addEventListener('complete', () => {
+                            dotLottie.setFrame(140);
+                        });
+                    </script>
+                </div>
+
+                <div id="chat-log">
+                    <!-- 聊天消息将在这里显示 -->
+                </div>
+            </div>
+
+            <div class="input-container">
+                <div class="input-box">
+                    <!-- 新增左侧的新建会话按钮 -->
+                    <button id="new-chat-button" onclick="createNewChat()" title="新建会话">
+                        <svg t="1742719539395" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="2643" width="24" height="24">
+                            <path d="M904.2 344.3c-21.5-50.7-52.2-96.3-91.3-135.4s-84.6-69.8-135.4-91.3C625 95.5 569.3 84.2 511.8 84.2S398.5 95.5 346 117.7c-50.7 21.5-96.3 52.2-135.4 91.3s-69.8 84.6-91.3 135.4c-22.2 52.5-33.5 108.3-33.5 165.8S97.1 623.5 119.3 676c21.5 50.7 52.2 96.3 91.3 135.4 39.1 39.1 84.6 69.8 135.4 91.3 52.5 22.2 108.3 33.5 165.8 33.5s113.3-11.3 165.8-33.5c50.7-21.5 96.3-52.2 135.4-91.3 39.1-39.1 69.8-84.6 91.3-135.4 22.2-52.5 33.5-108.3 33.5-165.8s-11.4-113.4-33.6-165.9zM511.8 876C310 876 145.9 711.8 145.9 510.1S310 144.2 511.8 144.2c201.7 0 365.9 164.1 365.9 365.9 0 201.7-164.2 365.9-365.9 365.9z" fill="#e6e6e6" p-id="2644"></path>
+                            <path d="M737 481H542V286c0-16.5-13.5-30-30-30s-30 13.5-30 30v195H287c-16.5 0-30 13.5-30 30s13.5 30 30 30h195v195c0 16.5 13.5 30 30 30s30-13.5 30-30V541h195c16.5 0 30-13.5 30-30s-13.5-30-30-30z" fill="#e6e6e6" p-id="2645"></path>
+                        </svg>
+                    </button>
+                    <textarea id="user-input" placeholder="发送消息..." rows="1"></textarea>
+                    <button id="send-button">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+        <!--  工具页面（初始隐藏）  -->
+        <div id="pdf-to-word-page" class="tool-page">
+            <div class="tool-header">
+                <h2>PDF 转换器</h2>
+                <p class="tool-description">把你的PDF转为任意格式的文档.</p>
+            </div>
+        
+            <div class="converter-container">
+                <div class="upload-area" id="pdf-upload-area">
+                    <div class="upload-icon">
+                        <i class="fas fa-file-pdf"></i>
+                    </div>
+                    <p class="upload-text">上传PDF文件</p>
+                    <label for="pdf-file-input" class="upload-button">选择文件</label>
+                    <input type="file" id="pdf-file-input" accept=".pdf" style="display: none;">
+                    <p class="file-info" id="pdf-file-info">未选择文件</p>
+                </div>
+        
+                <div class="conversion-progress" id="conversion-progress" style="display: none;">
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" id="pdf-progress-bar"></div>
+                    </div>
+                    <p class="progress-text" id="progress-text">Converting: 0%</p>
+                </div>
+        
+                <div class="conversion-result" id="conversion-result" style="display: none;">
+                    <div class="result-icon">
+                        <i class="fas fa-file-word"></i>
+                    </div>
+                    <p class="result-text">Conversion completed!</p>
+                    <a href="#" id="download-word-btn" class="download-button">Download Word Document</a>
+                </div>
+        
+                <div class="conversion-error" id="conversion-error" style="display: none;">
+                    <div class="error-icon">
+                        <i class="fas fa-exclamation-circle"></i>
+                    </div>
+                    <p class="error-text" id="error-text">An error occurred during conversion.</p>
+                    <button class="retry-button" onclick="resetPdfConverter()">Try Again</button>
+                </div>
+            </div>
+        
+            <!-- PDF Chat Interface -->
+            <div class="pdf-chat-container">
+                <div class="pdf-chat-header">
+                    <h3>需要对话式的帮助吗?</h3>
+                    <p>询问AI关于PDF的内容.</p>
+                    <div id="pdf-chat-toggle" class="pdf-chat-toggle">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none"
+                             stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="18 15 12 9 6 15"></polyline>
+                        </svg>
+                    </div>
+                </div>
+        
+                <div class="pdf-chat-messages" id="pdf-chat-messages">
+                    <div class="pdf-chat-message bot">
+                        <div class="pdf-chat-avatar bot-avatar">🤖</div>
+                        <div class="pdf-chat-content">
+                            你好,我可以帮助你将PDF转为其他格式的助手.
+                        </div>
+                    </div>
+                </div>
+        
+                <div class="pdf-chat-input-container">
+                    <textarea id="pdf-chat-input" placeholder="提问一个关于PDF的问题..." rows="1"></textarea>
+                    <button id="pdf-chat-send">
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="essay-page" class="tool-page">
+            <iframe src="http://139.224.203.197:7863" frameborder="0"></iframe>
+        </div>
+
+        <div id="ppt-page" class="tool-page">
+            <h2>Open Manus</h2>
+            <p>开发中，敬请期待</p>
+        </div>
+
+        <div id="resume-page" class="tool-page">
+            <iframe src="http://139.224.203.197:7864/app/dashboard/resumes" frameborder="0"></iframe>
+        </div>
+
+        <div id="flowchart-page" class="tool-page">
+            <h2>流程图</h2>
+            <p>流程图工具</p>
+            <!--  添加 Flowchart 工具的内容  -->
+        </div>
+    </div>
+</div>
+
+<script>
+    // 设置全局marked配置
+    marked.setOptions({
+        highlight: null,
+        langPrefix: 'no-highlight',
+        breaks: true // 添加此选项以将单个换行符视为<br>
+    });
+
+    const modelSelector = document.getElementById('model-selector');
+    const chatLog = document.getElementById('chat-log');
+    const userInput = document.getElementById('user-input');
+    const sendButton = document.getElementById('send-button');
+    const welcomeScreen = document.getElementById('welcome-screen');
+    const chatContainer = document.getElementById('chat-container');
+    const aiChatPage = document.getElementById('ai-chat-page');
+
+    let selectedModel = "DeepSeek-R1";
+    let isFirstMessage = true;
+    let currentChatId = null;
+    let chatSessions = [];
+
+    // 用户验证代码
+    document.addEventListener('DOMContentLoaded', function () {
+        const token = localStorage.getItem('token');
+        const isFeatureNavigation = sessionStorage.getItem('isFeatureNavigation');
+
+        if (!token) {
+            // 如果没有token，跳转到登录页面
+            window.location.href = 'login.html';
+            return;
+        }
+
+        // 验证token
+        console.log('开始验证token，使用API基础URL:', API_BASE_URL);
+        const apiUrl = `${API_BASE_URL}/api/v1/auth/me`;
+        console.log('完整请求URL:', apiUrl);
+        
+        fetch(apiUrl, {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        })
+            .then(response => {
+                if (response.ok) {
+                    // token有效，清除导航标记
+                    sessionStorage.removeItem('isFeatureNavigation');
+                    console.log('Token验证成功，获取用户数据');
+                    return response.json();
+                } else {
+                    // token无效，清除token和导航标记
+                    console.log('Token验证失败，状态码:', response.status);
+                    localStorage.removeItem('token');
+                    sessionStorage.removeItem('isFeatureNavigation');
+                    throw new Error('Invalid token');
+                }
+            })
+            .then(data => {
+                // 显示用户信息
+                console.log('获取到用户数据:', data);
+                try {
+                    const username = data.username;
+                    if (!username) {
+                        console.error('用户名为空');
+                        throw new Error('Username is empty');
+                    }
+                    
+                    const usernameElement = document.getElementById('username-text');
+                    if (!usernameElement) {
+                        console.error('找不到用户名显示元素');
+                        throw new Error('Username element not found');
+                    }
+                    usernameElement.textContent = username;
+                    
+                    // 设置默认头像，使用用户名首字母
+                    const avatar = document.getElementById('user-avatar');
+                    if (!avatar) {
+                        console.error('找不到头像元素');
+                        throw new Error('Avatar element not found');
+                    }
+                    avatar.textContent = username.charAt(0).toUpperCase();
+                    
+                    // 添加悬停效果
+                    avatar.title = username;
+                    
+                    // 确保用户信息显示后再加载聊天界面
+                    console.log('加载聊天界面');
+                    loadChatTool();
+                } catch (err) {
+                    console.error('显示用户信息时出错:', err);
+                    // 不要在这里重定向，让用户仍然可以访问页面
+                }
+            })
+            .catch(error => {
+                console.error('Error verifying token:', error);
+                // 只有在非功能导航时才跳转到登录页面
+                if (!isFeatureNavigation) {
+                    console.log('重定向到登录页面');
+                    window.location.href = 'login.html';
+                }
+            });
+
+        // 添加退出功能
+        document.getElementById('logout-button').addEventListener('click', function () {
+            localStorage.removeItem('token');
+            window.location.href = 'login.html';
+        });
+    });
+
+    // 自动调整文本框高度
+    userInput.addEventListener('input', function () {
+        this.style.height = 'auto';
+        this.style.height = (this.scrollHeight) + 'px';
+    });
+
+    // 按Enter发送消息，Shift+Enter换行
+    userInput.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            const message = this.value.trim();
+            if (message) {
+                // Clear welcome screen when user presses Enter with content
+                if (isFirstMessage) {
+                    welcomeScreen.style.display = 'none';
+                    isFirstMessage = false;
+                }
+                sendButton.click();
+            }
+        }
+    });
+
+    // 发送按钮点击事件
+    sendButton.addEventListener('click', function () {
+        const message = userInput.value.trim();
+        if (message) {
+            sendMessage(message);
+        }
+    });
+
+    //  处理点击推荐
+    function useExample(exampleText) {
+        // 立即隐藏欢迎界面
+        welcomeScreen.style.display = 'none';
+        
+        // 填充输入框并发送
+        userInput.value = exampleText;
+        sendMessage(exampleText);
+    }
+
+    function sendMessage(message) {
+        // 不管是否是第一条消息，都立即隐藏欢迎屏幕
+        welcomeScreen.style.display = 'none';
+        
+        if (isFirstMessage) {
+            isFirstMessage = false;
+        }
+
+        // 如果没有currentChatId，说明是新对话，则创建
+        if (!currentChatId) {
+            startNewChat();
+        }
+
+        // 更新当前聊天的标题（使用第一条消息的前20个字符）
+        if (chatSessions.length > 0) {
+            const currentChat = chatSessions.find(c => c.id === currentChatId);
+            if (currentChat && currentChat.messages.length === 0) {
+                currentChat.title = message.length > 20 ? message.substring(0, 20) + '...' : message;
+                updateChatHistory();
+            }
+
+            // 保存消息到当前会话
+            currentChat.messages.push({
+                role: 'user',
+                content: message
+            });
+        }
+
+        // 显示用户消息
+        displayUserMessage(message);
+
+        // 清空输入框并重置高度
+        userInput.value = '';
+        userInput.style.height = 'auto'; // Reset height first
+        userInput.style.height = userInput.scrollHeight + 'px'; // Recalculate based on content (even if empty)
+
+        //  调用 AI
+        requestChatCompletion(message);
+    }
+
+    // 新建对话
+    function startNewChat() {
+        // 生成新的聊天ID
+        currentChatId = Date.now().toString();
+
+        // 清空聊天记录
+        chatLog.innerHTML = '';
+        
+        // 添加到历史记录
+        const newChatItem = {
+            id: currentChatId,
+            title: "新对话",
+            messages: []
+        };
+
+        chatSessions.unshift(newChatItem);
+        updateChatHistory();
+    }
+
+    // 更新聊天历史记录UI
+    function updateChatHistory() {
+        // 实现更新聊天历史记录的逻辑
+    }
+
+    // 显示用户消息
+    function displayUserMessage(message) {
+        const userMessageDiv = document.createElement('div');
+        userMessageDiv.classList.add('message', 'user-message');
+
+        const userAvatar = document.createElement('div');
+        userAvatar.classList.add('avatar', 'user-avatar');
+        userAvatar.textContent = '🧑‍💻';
+
+        const userContent = document.createElement('div');
+        userContent.classList.add('message-content');
+        userContent.textContent = message;
+
+        userMessageDiv.appendChild(userAvatar);
+        userMessageDiv.appendChild(userContent);
+        chatLog.appendChild(userMessageDiv);
+        chatContainer.scrollTop = chatContainer.scrollHeight; // 滚动到底部
+    }
+
+    function processResponse(message) {
+        // 检查是否包含思考过程（以<think>标签包裹）
+        if (message.includes('<think>') || message.includes('</think>')) {
+            let thoughtProcess = '';
+            let actualResponse = '';
+            
+            // 处理可能缺少开始标签的情况（因为流式返回可能导致标签不完整）
+            if (!message.includes('<think>') && message.includes('</think>')) {
+                // 如果只有结束标签没有开始标签，将整个内容视为思考过程
+                const parts = message.split('</think>');
+                thoughtProcess = parts[0] || '';
+                actualResponse = parts[1] || '';
+            } else {
+                // 正常情况：提取思考过程和实际回复
+                const thinkMatch = message.match(/<think>([\s\S]*?)<\/think>/);
+                thoughtProcess = thinkMatch ? thinkMatch[1] : '';
+                actualResponse = message.replace(/<think>[\s\S]*?<\/think>/, '');
+            }
+            
+            // 创建思考内容的展示
+            let processedMessage = '';
+            if (thoughtProcess) {
+                // Wrap raw thoughtProcess in <pre> for literal display, bypass marked.parse()
+                processedMessage += `<div class="thinking-content">
+                    <details>
+                        <summary>思考过程</summary>
+                        <div><pre>${thoughtProcess}</pre></div> 
+                    </details>
+                </div>`;
+            }
+            
+            // 添加实际回答内容, 使用 marked.parse 解析 Markdown
+            if (actualResponse) {
+                // Directly use marked.parse, wrap result in markdown-container
+                // highlight: null 已经在全局设置过了
+                processedMessage += `<div class="markdown-container">${marked.parse(actualResponse)}</div>`;
+            }
+            
+            return processedMessage;
+        }
+        
+        // 如果没有思考过程标记，直接使用 marked.parse 处理整个消息并包裹
+        // highlight: null 已经在全局设置过了
+        return `<div class="markdown-container">${marked.parse(message)}</div>`;
+    }
+
+    function displayBotMessage(messageContent) {
+        const botMessageDiv = document.createElement('div');
+        botMessageDiv.classList.add('message', 'bot-message');
+
+        const botAvatar = document.createElement('div');
+        botAvatar.classList.add('avatar', 'bot-avatar');
+        botAvatar.innerHTML = `
+            <dotlottie-player src="https://lottie.host/75aa12e4-fd42-45e9-a5d3-6bf613e20dcf/ZLD80SkoJw.lottie" background="transparent" speed="1" style="width: 450px; height: 450px" loop></dotlottie-player>
+        `;
+        const lottiePlayer = botAvatar.querySelector('dotlottie-player');
+
+        const botContent = document.createElement('div');
+        botContent.classList.add('message-content');
+        
+        // 使用处理后的内容
+        botContent.innerHTML = processResponse(messageContent);
+
+        botMessageDiv.appendChild(botAvatar);
+        botMessageDiv.appendChild(botContent);
+        chatLog.appendChild(botMessageDiv);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+
+        // 应用代码高亮 (移除)
+        // botContent.querySelectorAll('pre code').forEach(block => {
+        //     if (!block.closest('.thinking-content')) {
+        //          // hljs.highlightElement(block); 
+        //     }
+        // });
+    }
+
+    // 请求聊天完成
+    function requestChatCompletion(message) {
+        // 1. 获取选择的模型
+        const model = modelSelector.value;
+
+        // 2. 创建机器人消息框架（预先创建，等待填充内容）
+        const botMessageDiv = document.createElement('div');
+        botMessageDiv.classList.add('message', 'bot-message');
+
+        const botAvatar = document.createElement('div');
+        botAvatar.classList.add('avatar', 'bot-avatar');
+        // 使用用户要求的完整格式
+        botAvatar.innerHTML = `
+            <dotlottie-player src="https://lottie.host/75aa12e4-fd42-45e9-a5d3-6bf613e20dcf/ZLD80SkoJw.lottie" background="transparent" speed="1" style="width: 450px; height: 450px" loop></dotlottie-player>
+        `;
+        // 获取动画元素以便后续控制
+        const lottiePlayer = botAvatar.querySelector('dotlottie-player');
+
+        const botContent = document.createElement('div');
+        botContent.classList.add('message-content');
+        const typingIndicator = document.createElement('div');
+        typingIndicator.classList.add('typing-indicator');
+        typingIndicator.innerHTML = '<div class="wave-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>';
+        botContent.appendChild(typingIndicator);
+
+        botMessageDiv.appendChild(botAvatar);
+        botMessageDiv.appendChild(botContent);
+        chatLog.appendChild(botMessageDiv);
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+
+        // 禁用发送按钮和输入框
+        sendButton.disabled = true;
+        userInput.disabled = true;
+
+        // 3. 发起聊天请求
+        fetch('/api/v1/tools/chat', {  // 使用相对路径
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                model: model,
+                prompt: message,
+                max_tokens: 4096,
+                stream: true
+            })
+        })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+
+                // 开始播放动画
+                lottiePlayer.setAttribute('autoplay', '');
+                lottiePlayer.play();
+
+                // 4. 处理SSE流
+                const reader = response.body.getReader();
+                let botMessageText = "";
+                let pendingText = ""; // 用于处理可能被分割的数据
+
+                const processStream = async () => {
+                    while (true) {
+                        const {done, value} = await reader.read(); // 逐块读取
+
+                        if (done) {
+                            // 流结束
+                            typingIndicator.remove();  // 移除思考中指示器
+                            // 停止Lottie动画
+                            lottiePlayer.removeAttribute('autoplay');
+                            lottiePlayer.pause();
+
+                            if (botMessageText.trim() === "") {
+                                botContent.innerHTML = "无响应"; // 如果没有内容，显示"无响应"
+                            } else {
+                                // Final processing and highlighting after stream ends
+                                botContent.innerHTML = processResponse(botMessageText);
+                                // 移除流结束后的代码高亮处理 (移除)
+                                // const finalBlocksToHighlight = botContent.querySelectorAll('pre code');
+                                // finalBlocksToHighlight.forEach(block => { ... });
+                            }
+                            chatContainer.scrollTop = chatContainer.scrollHeight;
+
+                            //  保存消息到当前会话
+                            if (chatSessions.length > 0) {
+                                const currentChat = chatSessions.find(c => c.id === currentChatId);
+                                if (currentChat) {
+                                    currentChat.messages.push({
+                                        role: 'assistant',
+                                        content: botMessageText
+                                    });
+                                }
+                            }
+
+                            // 重新启用发送按钮和输入框
+                            sendButton.disabled = false;
+                            userInput.disabled = false;
+                            break;
+                        }
+
+                        // 处理 SSE 数据块
+                        const chunk = new TextDecoder().decode(value);
+                        const lines = chunk.split('\n');
+
+                        for (const line of lines) {
+                            if (line.startsWith('data: ')) {
+                                const data = line.substring('data: '.length).trim();
+                                if (data === '[DONE]') {
+                                    // 流结束信号
+                                    typingIndicator.remove(); // 移除思考中指示器
+                                    // 停止Lottie动画
+                                    lottiePlayer.removeAttribute('autoplay');
+                                    lottiePlayer.pause();
+                                    chatContainer.scrollTop = chatContainer.scrollHeight;
+                                    break;
+                                } else if (data) {
+                                    // 更新 Bot 消息 (拼接)
+                                    botMessageText += data;
+                                    // Process the entire accumulated message for streaming display
+                                    botContent.innerHTML = processResponse(botMessageText);
+                                    // 移除代码高亮处理 (移除)
+                                    // Re-apply highlighting to all code blocks within the updated content
+                                    // const blocksToHighlight = botContent.querySelectorAll('pre code');
+                                    // blocksToHighlight.forEach((block, index) => { ... });
+                                    chatContainer.scrollTop = chatContainer.scrollHeight; // Scroll during streaming
+                                }
+                            }
+                        }
+                    }
+                };
+
+                processStream(); //  启动流处理
+            })
+            .catch(error => {
+                console.error('Error during chat:', error);
+                typingIndicator.remove();  // 移除思考中指示器
+                // 停止Lottie动画
+                lottiePlayer.removeAttribute('autoplay');
+                lottiePlayer.pause();
+                
+                const errorMessageDiv = document.createElement('div');
+                errorMessageDiv.classList.add('message', 'bot-message', 'error-message');
+                errorMessageDiv.textContent = 'Error: ' + error.message;
+                chatLog.appendChild(errorMessageDiv);
+                chatLog.scrollTop = chatLog.scrollHeight;
+
+                // 在发生错误时，也要重新启用发送按钮和输入框
+                sendButton.disabled = false;
+                userInput.disabled = false;
+            });
+    }
+
+    //  如果需要在页面加载时就获取焦点到输入框
+    userInput.focus();
+
+    // 监听模型选择器的变化
+    modelSelector.addEventListener('change', function () {
+        selectedModel = this.value;
+        //  console.log("Selected model:", selectedModel); //  可以在这里添加一个提示，通知用户已更改模型，或者执行其他的操作。
+    });
+
+    function loadTool(toolName) {
+        // 隐藏 AI Chat 页面
+        aiChatPage.style.display = 'none';
+
+        // 获取所有工具页面元素
+        const toolPages = document.querySelectorAll('.tool-page');
+
+        // 遍历工具页面，隐藏所有页面
+        toolPages.forEach(page => {
+            page.style.display = 'none';
+        });
+
+        // 显示选定的工具页面
+        const selectedToolPage = document.getElementById(`${toolName}-page`);
+        if (selectedToolPage) {
+            selectedToolPage.style.display = 'block';
+        }
+
+        // 更新工具项的激活状态
+        document.querySelectorAll('.tool-item').forEach(item => {
+            item.classList.remove('active');
+        });
+        document.querySelector(`.tool-item[onclick="loadTool('${toolName}')"]`).classList.add('active');
+
+        // Initialize PDF converter and chat if that tool is selected
+        if (toolName === 'pdf-to-word') {
+            setTimeout(() => {
+                initPdfConverter();
+                initPdfChat();
+                // 确保PDF聊天容器可见
+                const pdfChatContainer = document.querySelector('.pdf-chat-container');
+                if (pdfChatContainer) {
+                    pdfChatContainer.style.display = 'flex';
+                }
+            }, 100);
+        }
+    }
+
+    function loadChatTool() {
+        // 显示 天汇AI 页面
+        aiChatPage.style.display = 'flex';
+
+        // 获取所有工具页面元素
+        const toolPages = document.querySelectorAll('.tool-page');
+
+        // 遍历工具页面，隐藏所有页面
+        toolPages.forEach(page => {
+            page.style.display = 'none';
+        });
+
+        // 更新工具项的激活状态
+        document.querySelectorAll('.tool-item').forEach(item => {
+            item.classList.remove('active');
+        });
+        document.querySelector('.tool-item[onclick="loadChatTool()"]').classList.add('active');
+    }
+
+    // 页面加载时默认显示 天汇AI
+    loadChatTool();
+
+    // PDF Converter functionality
+    function initPdfConverter() {
+        const uploadArea = document.getElementById('pdf-upload-area');
+        const fileInput = document.getElementById('pdf-file-input');
+        const fileInfo = document.getElementById('pdf-file-info');
+        const progressContainer = document.getElementById('conversion-progress');
+        const progressBar = document.getElementById('pdf-progress-bar');
+        const progressText = document.getElementById('progress-text');
+        const resultContainer = document.getElementById('conversion-result');
+        const errorContainer = document.getElementById('conversion-error');
+        const errorText = document.getElementById('error-text');
+        const downloadBtn = document.getElementById('download-word-btn');
+
+        // Click on upload area to trigger file input
+        uploadArea.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        // Handle file selection
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                const file = e.target.files[0];
+                if (file.type === 'application/pdf') {
+                    fileInfo.textContent = `Selected: ${file.name} (${formatFileSize(file.size)})`;
+                    startConversion(file);
+                } else {
+                    fileInfo.textContent = 'Please select a valid PDF file.';
+                    fileInfo.style.color = '#ef4444';
+                }
+            }
+        });
+
+        // Handle drag and drop
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('drag-over');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('drag-over');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('drag-over');
+
+            if (e.dataTransfer.files.length > 0) {
+                const file = e.dataTransfer.files[0];
+                if (file.type === 'application/pdf') {
+                    fileInput.files = e.dataTransfer.files;
+                    fileInfo.textContent = `Selected: ${file.name} (${formatFileSize(file.size)})`;
+                    startConversion(file);
+                } else {
+                    fileInfo.textContent = 'Please select a valid PDF file.';
+                    fileInfo.style.color = '#ef4444';
+                }
+            }
+        });
+
+        // Format file size
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' bytes';
+            else if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+            else return (bytes / 1048576).toFixed(1) + ' MB';
+        }
+
+        // Start conversion process
+        function startConversion(file) {
+            // Show progress container
+            uploadArea.style.display = 'none';
+            progressContainer.style.display = 'block';
+            resultContainer.style.display = 'none';
+            errorContainer.style.display = 'none';
+
+            // Simulate conversion progress (in a real app, this would be an API call)
+            let progress = 0;
+            const interval = setInterval(() => {
+                progress += Math.random() * 10;
+                if (progress > 100) progress = 100;
+
+                progressBar.style.width = `${progress}%`;
+                progressText.textContent = `Converting: ${Math.round(progress)}%`;
+
+                if (progress === 100) {
+                    clearInterval(interval);
+                    setTimeout(() => {
+                        // Show result
+                        progressContainer.style.display = 'none';
+
+                        // Randomly show success or error (for demo purposes)
+                        if (Math.random() > 0.2) { // 80% success rate
+                            resultContainer.style.display = 'block';
+                            // Set download link (in a real app, this would be the actual file URL)
+                            downloadBtn.href = '#';
+                            downloadBtn.download = file.name.replace('.pdf', '.docx');
+
+                            // For demo purposes, clicking the download button will reset the converter
+                            downloadBtn.addEventListener('click', (e) => {
+                                // In a real app, this would be a real download
+                                // For demo, we'll just reset the converter after a delay
+                                setTimeout(resetPdfConverter, 500);
+                            });
+                        } else {
+                            errorContainer.style.display = 'block';
+                            errorText.textContent = 'An error occurred during conversion. Please try again.';
+                        }
+                    }, 500);
+                }
+            }, 200);
+        }
+    }
+
+    // Reset PDF converter to initial state
+    function resetPdfConverter() {
+        const uploadArea = document.getElementById('pdf-upload-area');
+        const fileInfo = document.getElementById('pdf-file-info');
+        const progressContainer = document.getElementById('conversion-progress');
+        const resultContainer = document.getElementById('conversion-result');
+        const errorContainer = document.getElementById('conversion-error');
+        const fileInput = document.getElementById('pdf-file-input');
+
+        // Reset file input
+        fileInput.value = '';
+
+        // Reset UI
+        uploadArea.style.display = 'block';
+        progressContainer.style.display = 'none';
+        resultContainer.style.display = 'none';
+        errorContainer.style.display = 'none';
+        fileInfo.textContent = 'No file selected';
+        fileInfo.style.color = '#a5b4fc';
+    }
+
+    // PDF Chat functionality
+    function initPdfChat() {
+        const chatContainer = document.querySelector('.pdf-chat-container');
+        const chatHeader = document.querySelector('.pdf-chat-header');
+        const chatToggle = document.getElementById('pdf-chat-toggle');
+        const chatInput = document.getElementById('pdf-chat-input');
+        const sendButton = document.getElementById('pdf-chat-send');
+        const chatMessages = document.getElementById('pdf-chat-messages');
+
+        // Check if elements exist before adding event listeners
+        if (!chatContainer || !chatHeader || !chatInput || !sendButton || !chatMessages) {
+            console.error('PDF Chat elements not found');
+            return; // Exit the function if elements don't exist
+        }
+
+        // Initially hide the chat on mobile devices
+        if (window.innerWidth < 768) {
+            chatContainer.classList.add('minimized');
+            if (chatToggle) updateToggleIcon(true);
+        }
+
+        // Toggle chat open/closed
+        chatHeader.addEventListener('click', function (e) {
+            // Don't toggle if clicking on the input
+            if (e.target === chatInput) return;
+
+            chatContainer.classList.toggle('minimized');
+            const isMinimized = chatContainer.classList.contains('minimized');
+            if (chatToggle) updateToggleIcon(isMinimized);
+
+            // If opening, focus the input
+            if (!isMinimized) {
+                setTimeout(() => chatInput.focus(), 300);
+            }
+        });
+
+        // Update the toggle icon (only if element exists)
+        function updateToggleIcon(isMinimized) {
+            if (!chatToggle) return;
+
+            chatToggle.innerHTML = isMinimized
+                ? '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>'
+                : '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"></polyline></svg>';
+        }
+
+        // Auto-resize input
+        chatInput.addEventListener('input', function () {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 100) + 'px';
+        });
+
+        // Send on Enter, new line on Shift+Enter
+        chatInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendButton.click();
+            }
+        });
+
+        // Send button click
+        sendButton.addEventListener('click', function () {
+            const message = chatInput.value.trim();
+            if (message) {
+                // Add user message
+                addPdfChatMessage(message, 'user');
+
+                // Clear input and reset height
+                chatInput.value = '';
+                chatInput.style.height = 'auto';
+
+                // Simulate AI response (in a real app, this would call an API)
+                sendButton.disabled = true;
+
+                setTimeout(() => {
+                    // Add AI response
+                    let response = "I'm happy to help with your PDF conversion needs. ";
+
+                    if (message.toLowerCase().includes("convert")) {
+                        response += "To convert a PDF to Word, simply drag and drop your file into the upload area or click 'Choose File'. The conversion will start automatically.";
+                    } else if (message.toLowerCase().includes("format")) {
+                        response += "Our converter supports various PDF formats and maintains formatting including text, images, and basic layouts in the converted Word document.";
+                    } else if (message.toLowerCase().includes("error")) {
+                        response += "If you're experiencing errors, try uploading a different PDF file. Some PDFs with complex security settings or damaged files may not convert properly.";
+                    } else {
+                        response += "For any specific questions about PDF conversion, feel free to ask. I'm here to help you get the best results.";
+                    }
+
+                    addPdfChatMessage(response, 'bot');
+                    sendButton.disabled = false;
+                }, 1000);
+            }
+        });
+
+        // Function to add messages to the chat
+        function addPdfChatMessage(message, sender) {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('pdf-chat-message', sender);
+
+            const avatar = document.createElement('div');
+            avatar.classList.add('pdf-chat-avatar', sender + '-avatar');
+            avatar.textContent = sender === 'user' ? '👤' : '🤖';
+
+            const content = document.createElement('div');
+            content.classList.add('pdf-chat-content');
+            content.textContent = message;
+
+            messageDiv.appendChild(avatar);
+            messageDiv.appendChild(content);
+
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+    }
+
+    // Show PDF chat only on PDF converter page
+    document.addEventListener('DOMContentLoaded', function () {
+        // 我们不需要在这里隐藏PDF聊天容器，它会在加载对应工具时显示
+        // const pdfChatContainer = document.querySelector('.pdf-chat-container');
+        // if (pdfChatContainer) {
+        //     pdfChatContainer.style.display = 'none';
+        // }
+    });
+
+    // 用户明确请求新建聊天
+    function createNewChat() {
+        // 清空当前聊天ID，强制创建新对话
+        currentChatId = null;
+        
+        // 清空聊天记录
+        chatLog.innerHTML = '';
+        
+        // 显示欢迎页面
+        welcomeScreen.style.display = 'flex';
+        isFirstMessage = true;
+        
+        // 创建新的聊天会话
+        currentChatId = Date.now().toString();
+        const newChatItem = {
+            id: currentChatId,
+            title: "新对话",
+            messages: []
+        };
+        
+        chatSessions.unshift(newChatItem);
+        updateChatHistory();
+    }
+    
+    // 侧边栏切换功能
+    document.addEventListener('DOMContentLoaded', function() {
+        const sidebar = document.querySelector('.sidebar');
+        
+        // 添加移动端菜单按钮
+        const mobileMenuButton = document.createElement('div');
+        mobileMenuButton.classList.add('mobile-menu-button');
+        mobileMenuButton.innerHTML = '<i class="fas fa-bars"></i>';
+        document.body.appendChild(mobileMenuButton);
+        
+        // 添加遮罩层
+        const overlay = document.createElement('div');
+        overlay.classList.add('sidebar-overlay');
+        document.body.appendChild(overlay);
+        
+        // 点击菜单按钮打开侧边栏
+        mobileMenuButton.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            sidebar.classList.toggle('expanded');
+            overlay.classList.toggle('active');
+        });
+        
+        // 点击遮罩层关闭侧边栏
+        overlay.addEventListener('click', function() {
+            sidebar.classList.remove('expanded');
+            overlay.classList.remove('active');
+        });
+        
+        // 点击工具项后自动关闭侧边栏（在移动设备上）
+        const toolItems = document.querySelectorAll('.tool-item');
+        toolItems.forEach(item => {
+            item.addEventListener('click', function() {
+                if (window.innerWidth <= 768) {
+                    sidebar.classList.remove('expanded');
+                    overlay.classList.remove('active');
+                }
+            });
+        });
+        
+        // 点击页面其他区域时关闭展开的侧边栏
+        document.addEventListener('click', function(e) {
+            if (window.innerWidth <= 768 && 
+                !sidebar.contains(e.target) && 
+                sidebar.classList.contains('expanded')) {
+                sidebar.classList.remove('expanded');
+                overlay.classList.remove('active');
+            }
+        });
+        
+        // 移动设备上优化输入体验
+        const userInput = document.getElementById('user-input');
+        const pdfChatInput = document.getElementById('pdf-chat-input');
+        
+        // 解决iOS中输入法遮挡输入框的问题
+        function handleMobileInputFocus(input) {
+            if(!input) return;
+            
+            input.addEventListener('focus', function() {
+                if(window.innerWidth <= 768) {
+                    // 滚动到输入框位置，防止被输入法遮挡
+                    setTimeout(function() {
+                        input.scrollIntoView({behavior: 'smooth', block: 'center'});
+                    }, 300);
+                }
+            });
+            
+            // 失去焦点时，如果是移动设备，收起键盘并滚动到顶部
+            input.addEventListener('blur', function() {
+                if(window.innerWidth <= 768) {
+                    window.scrollTo(0, 0);
+                }
+            });
+        }
+        
+        handleMobileInputFocus(userInput);
+        handleMobileInputFocus(pdfChatInput);
+        
+        // 优化移动设备上的工具页面显示
+        function adjustToolPageHeights() {
+            if(window.innerWidth <= 768) {
+                const toolPages = document.querySelectorAll('.tool-page');
+                toolPages.forEach(page => {
+                    const iframes = page.querySelectorAll('iframe');
+                    iframes.forEach(iframe => {
+                        iframe.style.height = `${window.innerHeight - 150}px`;
+                    });
+                });
+            }
+        }
+        
+        // 初始调整和窗口调整时重新计算
+        adjustToolPageHeights();
+        window.addEventListener('resize', adjustToolPageHeights);
+        
+        // 初始化所有静态Lottie动画，确保初始状态为暂停
+        document.querySelectorAll('dotlottie-player').forEach(player => {
+            player.addEventListener('ready', () => {
+                player.pause();
+            });
+        });
+    });
+
+    // 修复PDF聊天头像和内容
+    function addPdfChatMessage(message, sender) {
+        const messageDiv = document.createElement('div');
+        messageDiv.classList.add('pdf-chat-message', sender);
+
+        const avatar = document.createElement('div');
+        avatar.classList.add('pdf-chat-avatar', sender + '-avatar');
+        avatar.textContent = sender === 'user' ? '👤' : '🤖';
+
+        const content = document.createElement('div');
+        content.classList.add('pdf-chat-content');
+        content.textContent = message;
+
+        messageDiv.appendChild(avatar);
+        messageDiv.appendChild(content);
+
+        const chatMessages = document.getElementById('pdf-chat-messages');
+        if (chatMessages) {
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+    }
+
+    // 检查URL哈希以确定初始加载的工具
+    document.addEventListener('DOMContentLoaded', function() {
+        // 检查URL哈希，以便能够直接链接到特定工具
+        const hash = window.location.hash.substring(1);
+        if (hash === 'pdf' || hash === 'pdf-converter') {
+            loadTool('pdf-to-word');
+        } else if (hash === 'essay') {
+            loadTool('essay');
+        } else if (hash === 'resume') {
+            loadTool('resume');
+        } else if (hash === 'flowchart') {
+            loadTool('flowchart');
+        } else if (hash === 'ppt') {
+            loadTool('ppt');
+        }
+        // 如果没有哈希或哈希不匹配，默认显示聊天工具
+    });
+</script>
+</body>
+</html>

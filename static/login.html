@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>登录 - AI 工具箱</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+            background-color: #0f1117;
+            margin: 0;
+            padding: 0;
+            color: #e0e0ff;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-image: radial-gradient(circle at 25% 25%, rgba(99, 102, 241, 0.05) 1%, transparent 10%),
+            radial-gradient(circle at 75% 75%, rgba(99, 102, 241, 0.05) 1%, transparent 10%);
+            background-size: 60px 60px;
+        }
+
+        .login-container {
+            background-color: rgba(30, 33, 48, 0.7);
+            border-radius: 10px;
+            padding: 40px;
+            width: 100%;
+            max-width: 400px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            backdrop-filter: blur(10px);
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .login-header h1 {
+            font-size: 24px;
+            margin: 0;
+            background: linear-gradient(90deg, #4c4ed9, #6366f1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: 1px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #a5b4fc;
+            font-size: 14px;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid rgba(99, 102, 241, 0.4);
+            border-radius: 6px;
+            background-color: rgba(22, 25, 35, 0.7);
+            color: #e0e0ff;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #6366f1;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.3);
+        }
+
+        .login-button {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(90deg, #4c4ed9, #6366f1);
+            border: none;
+            border-radius: 6px;
+            color: white;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .login-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(99, 102, 241, 0.3);
+        }
+
+        .register-link {
+            text-align: center;
+            margin-top: 20px;
+            color: #a5b4fc;
+        }
+
+        .register-link a {
+            color: #6366f1;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .register-link a:hover {
+            text-decoration: underline;
+        }
+
+        .error-message {
+            color: #ef4444;
+            font-size: 14px;
+            margin-top: 5px;
+            display: none;
+            padding: 8px;
+            background-color: rgba(239, 68, 68, 0.1);
+            border-radius: 4px;
+            border: 1px solid rgba(239, 68, 68, 0.2);
+        }
+
+        .form-group.error input {
+            border-color: #ef4444;
+        }
+
+        .form-group.error label {
+            color: #ef4444;
+        }
+
+        .loading-spinner {
+            display: none;
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top: 2px solid #fff;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* 添加用户菜单样式 */
+        .user-menu {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 8px 16px;
+            border-radius: 12px;
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+            z-index: 1000;
+        }
+
+        .user-menu:hover {
+            background: rgba(255, 255, 255, 1);
+            border-color: rgba(99, 102, 241, 0.4);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.1);
+        }
+
+        #username-display {
+            color: #1e293b;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 500;
+        }
+
+        .user-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #4c4ed9, #6366f1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 18px;
+            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .user-avatar:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.4);
+        }
+
+        #username-text {
+            color: #1e293b;
+            font-weight: 500;
+            letter-spacing: 0.3px;
+        }
+
+        .logout-button {
+            background: transparent;
+            border: 1px solid rgba(99, 102, 241, 0.4);
+            color: #4c4ed9;
+            padding: 6px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 14px;
+            transition: all 0.3s ease;
+            font-weight: 500;
+        }
+
+        .logout-button:hover {
+            background-color: rgba(99, 102, 241, 0.1);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(99, 102, 241, 0.1);
+        }
+
+        .logout-button i {
+            font-size: 14px;
+            transition: transform 0.3s ease;
+        }
+
+        .logout-button:hover i {
+            transform: translateX(2px);
+        }
+    </style>
+</head>
+<body>
+    <!-- 添加用户菜单 -->
+    <div class="user-menu" id="user-menu" style="display: none;">
+        <span id="username-display">
+            <div class="user-avatar" id="user-avatar"></div>
+            <span id="username-text"></span>
+        </span>
+        <button id="logout-button" class="logout-button">
+            <i class="fas fa-sign-out-alt"></i> 退出
+        </button>
+    </div>
+
+    <div class="login-container">
+        <div class="login-header">
+            <h1>登录</h1>
+        </div>
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="username">用户名</label>
+                <input type="text" id="username" name="username" required>
+                <div class="error-message" id="username-error"></div>
+            </div>
+            <div class="form-group">
+                <label for="password">密码</label>
+                <input type="password" id="password" name="password" required>
+                <div class="error-message" id="password-error"></div>
+            </div>
+            <div class="error-message" id="general-error"></div>
+            <button type="submit" class="login-button">
+                <span>登录</span>
+                <div class="loading-spinner"></div>
+            </button>
+        </form>
+        <div class="register-link">
+            还没有账号？<a href="register.html">立即注册</a>
+        </div>
+    </div>
+
+    <script>
+        // 定义全局API基础URL
+        const API_BASE_URL = window.location.origin; // 自动使用当前域名
+
+        function showError(elementId, message) {
+            const errorElement = document.getElementById(elementId);
+            errorElement.textContent = message;
+            errorElement.style.display = 'block';
+            const formGroup = errorElement.closest('.form-group');
+            if (formGroup) {
+                formGroup.classList.add('error');
+            }
+        }
+
+        function clearErrors() {
+            document.querySelectorAll('.error-message').forEach(error => {
+                error.textContent = '';
+                error.style.display = 'none';
+            });
+            document.querySelectorAll('.form-group').forEach(group => {
+                group.classList.remove('error');
+            });
+        }
+
+        // 登录函数
+        async function login() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+
+            // 表单验证
+            if (!username || !password) {
+                showError('用户名和密码不能为空');
+                return;
+            }
+
+            try {
+                // 不使用FormData，而是使用URLSearchParams或直接构造表单字符串
+                const formData = new URLSearchParams();
+                formData.append('username', username);
+                formData.append('password', password);
+
+                // 打印请求数据，用于调试
+                console.log('Sending login request with username:', username);
+
+                const response = await fetch(`${API_BASE_URL}/api/v1/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: formData
+                });
+
+                // 打印响应状态，用于调试
+                console.log('Response status:', response.status);
+
+                const data = await response.json();
+                console.log('Response data:', data);
+
+                if (response.ok) {
+                    // Store token
+                    localStorage.setItem('token', data.access_token);
+                    console.log('Token stored:', localStorage.getItem('token'));
+                    // Redirect to main page
+                    console.log('Redirecting to front.html...');
+                    window.location.href = 'front.html';
+                } else {
+                    // Show error message
+                    if (data.detail) {
+                        if (data.detail.toLowerCase().includes('username')) {
+                            showError('username-error', data.detail);
+                        } else if (data.detail.toLowerCase().includes('password')) {
+                            showError('password-error', data.detail);
+                        } else {
+                            showError('general-error', data.detail);
+                        }
+                    } else {
+                        showError('general-error', '登录失败，请检查用户名和密码');
+                    }
+                }
+            } catch (error) {
+                console.error('Login error:', error);
+                showError('general-error', '登录失败，请稍后重试');
+            }
+        }
+
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            clearErrors();
+
+            await login();
+        });
+
+        // 页面加载时检查登录状态
+        document.addEventListener('DOMContentLoaded', function() {
+            const token = localStorage.getItem('token');
+            const userMenu = document.getElementById('user-menu');
+
+            if (token) {
+                // 如果有token，验证token是否有效
+                fetch(`${API_BASE_URL}/api/v1/auth/me`, {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                })
+                .then(response => {
+                    if (response.ok) {
+                        // token有效，显示用户信息
+                        return response.json();
+                    } else {
+                        // token无效，清除token
+                        localStorage.removeItem('token');
+                        throw new Error('Invalid token');
+                    }
+                })
+                .then(data => {
+                    const username = data.username;
+                    document.getElementById('username-text').textContent = username;
+                    const avatar = document.getElementById('user-avatar');
+                    avatar.textContent = username.charAt(0).toUpperCase();
+                    userMenu.style.display = 'flex';
+                })
+                .catch(error => {
+                    console.error('Error verifying token:', error);
+                    localStorage.removeItem('token');
+                });
+            }
+
+            // 添加退出登录功能
+            document.getElementById('logout-button').addEventListener('click', function() {
+                localStorage.removeItem('token');
+                window.location.href = 'login.html';
+            });
+        });
+    </script>
+</body>
+</html>

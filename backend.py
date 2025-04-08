@@ -77,7 +77,7 @@ async def read_index_html():
 class ChatRequest(BaseModel):
     model: str  # Model name
     prompt: str  # User message
-    max_tokens: int = 8000  # Maximum tokens to generate
+    max_tokens: int = 4096 # Maximum tokens to generate
     temperature: float = 0.7  # Temperature for generation
     stream: bool = True  # Stream the response
 
@@ -204,9 +204,20 @@ async def fetch_azure_response(model: str, prompt: str, max_tokens: int, tempera
         for chunk in stream_resp:
             if chunk.choices and chunk.choices[0].delta.content:
                 content = chunk.choices[0].delta.content
-                # 直接发送内容，不做任何处理
-                response_queue.put(content)
+                # 构造与DeepSeek相同格式的响应
+                response_data = {
+                    "choices": [{
+                        "delta": {
+                            "content": content
+                        }
+                    }]
+                }
+                # 转换为SSE格式
+                sse_message = f"data: {json.dumps(response_data)}\n\n"
+                response_queue.put(sse_message)
         
+        # 发送结束标记
+        response_queue.put("data: [DONE]\n\n")
         # Signal end of stream
         response_queue.put(None)
     except Exception as e:

@@ -51,15 +51,27 @@
         <span>流程图生成器</span>
       </div>
     </div>
+    <div class="sidebar-content" v-if="activeToolId === 'chat'">
+      <!-- 聊天历史记录 -->
+      <ChatHistory
+        :chatHistory="chatHistory"
+        :currentChatId="currentChatId"
+        @new-chat="handleNewChat"
+        @select-chat="handleSelectChat"
+        @delete-chat="handleDeleteChat"
+      />
+    </div>
   </div>
 </template>
 
 <script setup>
 import { useRouter } from 'vue-router'
+import { defineProps, defineEmits } from 'vue'
+import ChatHistory from './ChatHistory.vue'
 
 const router = useRouter()
 
-defineProps({
+const props = defineProps({
   expanded: {
     type: Boolean,
     default: false
@@ -67,12 +79,108 @@ defineProps({
   activeToolId: {
     type: String,
     default: 'chat'
+  },
+  chatHistory: {
+    type: Array,
+    required: true
+  },
+  currentChatId: {
+    type: String,
+    default: null
   }
 })
 
-defineEmits(['load-chat-tool', 'load-tool'])
+const emit = defineEmits(['load-chat-tool', 'load-tool', 'new-chat', 'select-chat', 'delete-chat'])
+
+const handleNewChat = () => {
+  emit('new-chat')
+}
+
+const handleSelectChat = (chatId) => {
+  emit('select-chat', chatId)
+}
+
+const handleDeleteChat = (chatId) => {
+  emit('delete-chat', chatId)
+}
 
 const navigateTo = (path) => {
   router.push(path)
 }
-</script> 
+</script>
+
+<style scoped>
+.sidebar {
+  width: 260px;
+  height: 100%;
+  border-right: 1px solid rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.3s ease;
+}
+
+.sidebar-header {
+  padding: 10px;
+  font-size: 18px;
+  font-weight: bold;
+  color: #fff;
+}
+
+.sidebar-tools {
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+}
+
+.tool-item {
+  display: flex;
+  align-items: center;
+  padding: 10px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.tool-item:hover {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.tool-item.active {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.tool-item img {
+  width: 24px;
+  height: 24px;
+  margin-right: 10px;
+}
+
+.tool-item span {
+  font-size: 16px;
+  font-weight: bold;
+  color: #fff;
+}
+
+.sidebar-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    left: -260px;
+    top: 0;
+    height: 100%;
+    z-index: 1000;
+    transition: left 0.3s ease;
+  }
+  
+  .sidebar.expanded {
+    left: 0;
+    box-shadow: 2px 0 15px rgba(0, 0, 0, 0.3);
+  }
+}
+</style> 

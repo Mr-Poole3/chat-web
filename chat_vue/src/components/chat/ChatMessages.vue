@@ -125,6 +125,11 @@ watch(() => props.messages.length, (newLength, oldLength) => {
   }
 })
 
+// 监听消息内容变化，但不自动滚动
+watch(() => props.messages, () => {
+  // 不在这里执行自动滚动，让用户自己控制滚动位置
+}, { deep: true })
+
 // 动画完成后的回调函数
 const onAnimationComplete = () => {
   // 动画结束后停在最后一帧
@@ -324,25 +329,22 @@ const addCopyButtonToCodeBlocks = (html) => {
 
 /* 调整代码块样式 */
 .markdown-content pre.hljs {
-  border-radius: 8px;
-  padding: 0; /* 移除内边距，让内部code元素处理内边距 */
-  overflow: auto;
-  margin: 1em 0;
-  background-color: #1e2133; /* 统一的深色背景 */
-  border: 1px solid rgba(99, 102, 241, 0.2);
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  margin: 0;
+  padding: 0;
+  background-color: transparent;
+  contain: content; /* 防止内容溢出影响布局 */
 }
 
 .markdown-content pre.hljs code {
   display: block;
-  padding: 46px 16px 16px; /* 顶部增加足够的内边距 */
+  padding: 40px 16px 16px;
   color: #e0e0ff;
-  font-family: 'JetBrains Mono', 'Fira Code', SFMono-Regular, Consolas, 'Liberation Mono', Menlo, monospace;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
   font-size: 14px;
   line-height: 1.5;
   overflow-x: auto;
-  white-space: pre;
-  word-break: normal;
+  white-space: pre; /* 保持代码格式 */
+  tab-size: 2; /* 设置制表符宽度 */
 }
 
 /* 代码行 */
@@ -636,41 +638,53 @@ const addCopyButtonToCodeBlocks = (html) => {
   margin: 1em 0;
   border-radius: 8px;
   overflow: hidden;
+  background-color: #1e2133;
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  contain: content; /* 防止内容溢出影响布局 */
 }
 
 /* 代码块头部样式 */
 .code-block-header {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: 8px;
+  right: 8px;
   display: flex;
   align-items: center;
+  gap: 8px;
   z-index: 10;
+  padding: 4px;
   border-radius: 4px;
-  padding: 4px 8px;
   background: rgba(40, 44, 61, 0.8);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(4px);
   opacity: 0;
   transition: opacity 0.2s ease-in-out;
 }
 
-.code-block-wrapper:hover .code-block-header {
-  opacity: 1;
+/* 在桌面端，只在悬停时显示复制按钮 */
+@media (min-width: 768px) {
+  .code-block-wrapper:hover .code-block-header {
+    opacity: 1;
+  }
 }
 
-/* 复制按钮样式 */
+/* 在移动端，始终显示复制按钮 */
+@media (max-width: 767px) {
+  .code-block-header {
+    opacity: 1;
+  }
+}
+
 .copy-button {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
+  gap: 4px;
+  padding: 4px 8px;
   background: transparent;
   border: none;
   color: #a0a8b7;
   border-radius: 4px;
   cursor: pointer;
-  padding: 0;
+  font-size: 12px;
   transition: all 0.2s ease;
 }
 
@@ -680,58 +694,109 @@ const addCopyButtonToCodeBlocks = (html) => {
 }
 
 .copy-button svg {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
 }
 
-/* 复制状态文本 */
 .copy-status {
   font-size: 12px;
-  color: #a0a8b7;
-  margin-left: 4px;
-  font-weight: 500;
-  min-width: 36px;
 }
 
-/* 复制按钮点击后的状态样式 */
-.copy-button:active {
-  transform: scale(0.92);
-}
-
-/* 确保代码块样式能兼容复制按钮 */
-.code-block-wrapper .markdown-content pre.hljs,
-.code-block-wrapper pre.hljs {
-  margin: 0;
-  position: relative;
-  border-radius: 8px;
-}
-
-/* 增加代码块标题栏 */
-.code-block-wrapper::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 36px;
-  background: rgba(30, 33, 48, 0.6);
-  z-index: 1;
-  border-top-left-radius: 8px;
-  border-top-right-radius: 8px;
-  border-bottom: 1px solid rgba(99, 102, 241, 0.2);
-}
-
-/* 代码语言标签 */
 .code-language-label {
   position: absolute;
   top: 8px;
   left: 12px;
   font-size: 12px;
   color: #a0a8b7;
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  z-index: 5;
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+/* 消息样式 */
+.message {
+  display: flex;
+  margin-bottom: 20px;
+  max-width: 100%;
+  word-wrap: break-word;
+  align-items: flex-start;
+}
+
+.message-content {
+  line-height: 1.6;
+  background-color: rgba(30, 33, 48, 0.8);
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+  position: relative;
+  max-width: 65%;
+  width: auto;
+  overflow-wrap: break-word;
+  color: #e0e0ff;
+  contain: content; /* 防止内容溢出影响布局 */
+}
+
+.user-message {
+  flex-direction: row-reverse;
+  justify-content: flex-start;
+}
+
+.user-message .message-content {
+  background-color: rgba(99, 102, 241, 0.2);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  margin-right: 16px;
+  margin-left: 0;
+  color: #e0e0ff;
+}
+
+.bot-message {
+  justify-content: flex-start;
+}
+
+.bot-message .message-content {
+  background-color: rgba(30, 33, 48, 0.8);
+  border: 1px solid rgba(30, 33, 48, 0.8);
+  margin-left: 16px;
+  max-width: 85%;
+  color: #e0e0ff;
+}
+
+/* 桌面端固定宽度 */
+@media (min-width: 768px) {
+  .bot-message .message-content {
+    width: 800px;
+    max-width: 800px;
+  }
+  
+  .user-message .message-content {
+    width: auto;
+    max-width: 600px;
+  }
+}
+
+.avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+/* 聊天容器样式 */
+.chat-container {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(99, 102, 241, 0.5) #1e2130;
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  scroll-behavior: smooth; /* 平滑滚动 */
 }
 </style> 

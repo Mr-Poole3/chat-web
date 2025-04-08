@@ -18,7 +18,7 @@ class ChatRequest(BaseModel):
 class ToolsChatRequest(BaseModel):
     model: str = "gpt-4o-mini"  # Model name
     prompt: str  # User message
-    max_tokens: int = 8000  # Maximum tokens to generate
+    max_tokens: int = 4096 # Maximum tokens to generate
     temperature: float = 0.7  # Temperature for generation
     stream: bool = True  # Stream the response
     feature: str = "chat"  # Feature type

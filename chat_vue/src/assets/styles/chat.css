@@ -22,14 +22,19 @@
 }
 
 .sidebar-header {
-  padding: 20px;
+  padding: 15px 20px;
   text-align: center;
   font-size: 22px;
   font-weight: 600;
   border-bottom: 1px solid rgba(99, 102, 241, 0.2);
-  background: #1e2130;
+  background: linear-gradient(90deg, #4c4ed9, #6366f1);
   color: white;
   letter-spacing: 1px;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .sidebar-tools {
@@ -111,19 +116,12 @@
   display: flex;
   align-items: center;
   gap: 15px;
-  background: rgba(30, 33, 48, 0.95);
   padding: 8px 16px;
-  border-radius: 12px;
-  border: 1px solid rgba(99, 102, 241, 0.2);
-  backdrop-filter: blur(10px);
   transition: all 0.3s ease;
 }
 
 .user-menu:hover {
-  background: rgba(40, 45, 65, 1);
-  border-color: rgba(99, 102, 241, 0.4);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.1);
 }
 
 #username-display {
@@ -213,11 +211,12 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 15px 25px;
+  padding: 0 25px;
   border-bottom: 1px solid rgba(99, 102, 241, 0.2);
   position: relative;
   background-color: rgba(22, 25, 35, 0.7);
   backdrop-filter: blur(10px);
+  height: 56px;
 }
 
 #ai-chat-page {
@@ -302,7 +301,7 @@ select option {
 
 .input-box {
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   position: relative;
   max-width: 800px;
   margin: 0 auto;
@@ -323,7 +322,6 @@ select option {
   height: auto;
   max-height: 200px;
   overflow-y: auto;
-  transition: all 0.3s ease;
   box-shadow: 0 0 15px rgba(99, 102, 241, 0.15);
   box-sizing: border-box;
   scrollbar-width: none;
@@ -345,60 +343,55 @@ select option {
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.3);
 }
 
-#send-button {
-  position: absolute;
-  right: 12px;
-  bottom: 50%;
-  transform: translateY(50%);
-  background-color: transparent;
-  color: #6366f1;
-  border: none;
-  border-radius: 50%;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 8px;
-  transition: all 0.3s ease;
-}
-
 #new-chat-button {
   position: absolute;
   left: 12px;
-  bottom: 50%;
-  transform: translateY(50%);
-  background-color: transparent;
-  color: #6366f1;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
   border: none;
-  border-radius: 50%;
+  padding: 8px;
   cursor: pointer;
+  border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 8px;
-  transition: all 0.3s ease;
-  z-index: 2;
+  color: #6366f1;
 }
 
 #new-chat-button:hover {
   background-color: rgba(99, 102, 241, 0.1);
-  transform: scale(1.1);
 }
 
 #new-chat-button svg {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
+}
+
+#send-button {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  padding: 8px;
+  cursor: pointer;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6366f1;
 }
 
 #send-button:hover {
   background-color: rgba(99, 102, 241, 0.1);
-  transform: scale(1.1);
 }
 
 #send-button svg {
-  width: 18px;
-  height: 18px;
-  fill: #6366f1;
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
 }
 
 /* 消息样式 */

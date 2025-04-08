@@ -7,8 +7,13 @@
     <SideBar 
       :expanded="sidebarExpanded"
       :activeToolId="activeToolId"
+      :chatHistory="chatHistory"
+      :currentChatId="currentChatId"
       @load-chat-tool="loadChatTool"
       @load-tool="loadTool"
+      @new-chat="createNewChat"
+      @select-chat="loadChat"
+      @delete-chat="deleteChat"
     />
 
     <!-- 主内容区 -->
@@ -43,7 +48,7 @@
       </div>
       
       <!-- 工具页面（初始隐藏） -->
-      <ToolPages :tools="tools" />
+      <ToolPages :tools="tools" @toggle-sidebar="toggleSidebar" />
     </div>
   </div>
 </template>
@@ -147,26 +152,39 @@ const messages = ref([])
 const inputMessage = ref('')
 const loading = ref(false)
 const messagesContainer = ref(null)
-const selectedModel = ref('DeepSeek-R1') // 默认选择DeepSeek-R1模型
+const selectedModel = ref('DeepSeek-R1')
 const username = ref('')
-const activeToolId = ref('chat') // 当前活跃的工具ID
-const sidebarExpanded = ref(false) // 侧边栏是否展开
+const activeToolId = ref('chat')
+const sidebarExpanded = ref(false)
+const shouldAutoScroll = ref(true)
 
-// 添加聊天会话相关变量
-let isFirstMessage = true
-let currentChatId = null
-const chatSessions = ref([])
+// 聊天历史记录相关
+const chatHistory = ref([])
+const currentChatId = ref(null)
+const STORAGE_KEY = 'chat_history'
+const MAX_HISTORY = 15 // 最大历史记录数量
 
 // 添加SSE相关的变量
 const eventSource = ref(null)
 const waitingForResponse = ref(false)
 const currentAssistantMessage = ref('')
 
-const scrollToBottom = async () => {
+const scrollToBottom = async (force = false) => {
+  if (!force && !shouldAutoScroll.value) return
+  
   await nextTick()
   if (messagesContainer.value?.$el) {
     messagesContainer.value.$el.scrollTop = messagesContainer.value.$el.scrollHeight
   }
+}
+
+// 监听滚动事件，判断是否应该自动滚动
+const handleScroll = () => {
+  if (!messagesContainer.value?.$el) return
+  
+  const container = messagesContainer.value.$el
+  const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 100
+  shouldAutoScroll.value = isAtBottom
 }
 
 // 关闭SSE连接的方法
@@ -177,20 +195,147 @@ const closeEventSource = () => {
   }
 }
 
+// 从本地存储加载历史记录
+const loadChatHistory = () => {
+  const savedHistory = localStorage.getItem(STORAGE_KEY)
+  if (savedHistory) {
+    chatHistory.value = JSON.parse(savedHistory).slice(0, MAX_HISTORY)
+  }
+}
+
+// 保存历史记录到本地存储
+const saveChatHistory = () => {
+  // 确保历史记录不超过最大数量
+  if (chatHistory.value.length > MAX_HISTORY) {
+    chatHistory.value = chatHistory.value.slice(0, MAX_HISTORY)
+  }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(chatHistory.value))
+}
+
+// 创建新对话
+const createNewChat = () => {
+  // 如果当前有对话，先保存
+  if (currentChatId.value && messages.value.length > 0) {
+    saveCurrentChat()
+  }
+  
+  // 创建新对话
+  currentChatId.value = Date.now().toString()
+  messages.value = []
+  
+  // 添加到历史记录前端
+  chatHistory.value.unshift({
+    id: currentChatId.value,
+    title: '新对话',
+    messages: [],
+    createdAt: new Date().toISOString(),
+    model: selectedModel.value
+  })
+  
+  // 如果超过最大数量，删除最旧的对话
+  if (chatHistory.value.length > MAX_HISTORY) {
+    chatHistory.value = chatHistory.value.slice(0, MAX_HISTORY)
+  }
+  
+  saveChatHistory()
+}
+
+// 保存当前对话
+const saveCurrentChat = () => {
+  if (!currentChatId.value) return
+  
+  const chatIndex = chatHistory.value.findIndex(chat => chat.id === currentChatId.value)
+  if (chatIndex !== -1) {
+    // 更新现有对话
+    chatHistory.value[chatIndex].messages = [...messages.value]
+    chatHistory.value[chatIndex].updatedAt = new Date().toISOString()
+    chatHistory.value[chatIndex].model = selectedModel.value
+  } else {
+    // 创建新对话记录
+    chatHistory.value.unshift({
+      id: currentChatId.value,
+      title: messages.value[0]?.content.slice(0, 30) + '...' || '新对话',
+      messages: [...messages.value],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      model: selectedModel.value
+    })
+  }
+  
+  saveChatHistory()
+}
+
+// 加载特定对话
+const loadChat = (chatId) => {
+  // 保存当前对话
+  if (currentChatId.value && messages.value.length > 0) {
+    saveCurrentChat()
+  }
+  
+  // 加载选中的对话
+  const chat = chatHistory.value.find(c => c.id === chatId)
+  if (chat) {
+    currentChatId.value = chat.id
+    messages.value = [...chat.messages]
+    selectedModel.value = chat.model || 'DeepSeek-R1'
+  }
+  
+  // 在移动设备上自动关闭侧边栏
+  if (window.innerWidth <= 768) {
+    sidebarExpanded.value = false
+  }
+}
+
+// 删除对话
+const deleteChat = (chatId) => {
+  const index = chatHistory.value.findIndex(chat => chat.id === chatId)
+  if (index !== -1) {
+    chatHistory.value.splice(index, 1)
+    saveChatHistory()
+    
+    // 如果删除的是当前对话，创建新对话
+    if (chatId === currentChatId.value) {
+      createNewChat()
+    }
+  }
+}
+
+// 修改对话标题
+const updateChatTitle = (chatId, newTitle) => {
+  const chat = chatHistory.value.find(c => c.id === chatId)
+  if (chat) {
+    chat.title = newTitle
+    saveChatHistory()
+  }
+}
+
 // 发送消息
 const sendMessage = async () => {
   if (!inputMessage.value.trim() || loading.value) return
 
+  // 如果是新对话，创建对话记录
+  if (!currentChatId.value) {
+    createNewChat()
+  }
+
   const userMessage = inputMessage.value.trim()
   messages.value.push({
     role: 'user',
-    content: userMessage
+    content: userMessage,
+    timestamp: new Date().toISOString()
   })
+  
+  // 更新对话标题（如果是第一条消息）
+  if (messages.value.length === 1) {
+    updateChatTitle(currentChatId.value, userMessage.slice(0, 30) + '...')
+  }
+  
   inputMessage.value = ''
   loading.value = true
   waitingForResponse.value = true
   currentAssistantMessage.value = ''
-  await scrollToBottom()
+  shouldAutoScroll.value = true
+  await scrollToBottom(true)
 
   try {
     // 关闭可能存在的之前的连接
@@ -212,7 +357,7 @@ const sendMessage = async () => {
       body: JSON.stringify({
         model: selectedModel.value,
         prompt: userMessage,
-        max_tokens: 8000,
+        max_tokens: 4096,
         temperature: 0.7,
         stream: true,
         feature: currentFeature.value.id
@@ -315,8 +460,10 @@ const sendMessage = async () => {
         newBuffer = lines[lines.length - 1];
         buffer = newBuffer;
         
-        // 滚动到底部以显示最新消息
-        await scrollToBottom();
+        // 只在启用自动滚动时滚动到底部
+        if (shouldAutoScroll.value) {
+          await scrollToBottom();
+        }
       } catch (streamError) {
         console.error('读取流数据时出错:', streamError);
         // 更新最后一条消息以显示错误
@@ -332,7 +479,12 @@ const sendMessage = async () => {
 
     loading.value = false;
     waitingForResponse.value = false;
-    await scrollToBottom();
+    if (shouldAutoScroll.value) {
+      await scrollToBottom();
+    }
+
+    // 在流式响应完成后保存对话
+    saveCurrentChat()
   } catch (error) {
     console.error('聊天请求错误:', error);
 
@@ -350,7 +502,9 @@ const sendMessage = async () => {
     // 重置状态
     loading.value = false;
     waitingForResponse.value = false;
-    await scrollToBottom();
+    if (shouldAutoScroll.value) {
+      await scrollToBottom();
+    }
   }
 }
 
@@ -361,23 +515,6 @@ const newline = (e) => {
   nextTick(() => {
     e.target.selectionStart = e.target.selectionEnd = start + 1
   })
-}
-
-// 新建聊天功能
-const createNewChat = () => {
-  // 重置消息
-  messages.value = [];
-  isFirstMessage = true;
-  
-  // 生成新的会话ID
-  currentChatId = Date.now().toString();
-  
-  // 添加到会话列表
-  chatSessions.value.unshift({
-    id: currentChatId,
-    title: "新对话",
-    messages: []
-  });
 }
 
 // 登出功能
@@ -473,11 +610,26 @@ const handleResize = () => {
 onUnmounted(() => {
   closeEventSource();
   window.removeEventListener('resize', handleResize);
+  // 移除滚动事件监听
+  if (messagesContainer.value?.$el) {
+    messagesContainer.value.$el.removeEventListener('scroll', handleScroll);
+  }
 })
 
 onMounted(() => {
   loadUserInfo();
   loadChatTool(); // 默认加载聊天工具
+  loadChatHistory(); // 加载历史记录
+  
+  // 如果没有当前对话，创建新对话
+  if (!currentChatId.value) {
+    createNewChat();
+  }
+  
+  // 添加滚动事件监听
+  if (messagesContainer.value?.$el) {
+    messagesContainer.value.$el.addEventListener('scroll', handleScroll);
+  }
   
   // 自动调整文本框高度
   const userInputElement = document.getElementById('user-input');
@@ -497,74 +649,117 @@ onMounted(() => {
   window.addEventListener('resize', handleResize);
   handleResize(); // 初始调用一次
 });
-
-watch(messages, scrollToBottom, { deep: true })
 </script>
 
 <style>
 @import '@/assets/styles/chat.css';
 
+/* 容器基础样式 */
+.container {
+  display: flex;
+  height: 100vh;
+  width: 100%;
+  overflow: hidden;
+  position: fixed;
+  top: 0;
+  left: 0;
+}
+
+/* 侧边栏基础样式 */
+.sidebar {
+  width: 260px;
+  min-width: 260px;
+  background-color: #161923;
+  border-right: 1px solid rgba(99, 102, 241, 0.2);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding-bottom: 20px;
+  box-shadow: 0 0 20px rgba(76, 78, 229, 0.1);
+  height: 100vh;
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+}
+
+/* 主内容区域样式 */
+.main-content {
+  flex: 1;
+  margin-left: 260px;
+  height: 100vh;
+  overflow: hidden;
+  position: relative;
+  width: calc(100% - 260px);
+}
+
 /* 移动端适配样式 */
 @media (max-width: 768px) {
   .container {
     flex-direction: column;
+    width: 100%;
   }
   
   .main-content {
+    margin-left: 0;
     width: 100%;
   }
   
   .sidebar {
-    position: fixed;
-    left: -260px;
-    top: 0;
-    height: 100%;
-    z-index: 1000;
-    transition: left 0.3s ease;
-    width: 260px;
+    transform: translateX(-100%);
+    transition: transform 0.3s ease;
   }
   
   .sidebar.expanded {
+    transform: translateX(0);
+    box-shadow: 2px 0 15px rgba(0, 0, 0, 0.3);
+  }
+  
+  .sidebar-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
     left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 999;
   }
   
   .sidebar-overlay.active {
     display: block;
   }
-  
-  .message-content {
-    max-width: 85%;
-  }
-  
-  .user-message .message-content {
-    max-width: 85%;
-  }
-  
-  .bot-message .message-content {
-    max-width: 90%;
-  }
-  
-  .header {
-    padding: 10px 15px;
-  }
-  
-  .tool-item {
-    padding: 12px 15px;
-  }
-  
-  .input-container {
-    padding: 15px 10px 10px;
-  }
-  
-  #user-input {
-    padding: 12px 45px;
-    font-size: 14px;
-  }
-  
-  .tool-iframe {
-    width: 100%;
-    height: 100%;
-    border: none;
-  }
+}
+
+/* 自定义滚动条样式 */
+.chat-container {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(99, 102, 241, 0.5) #1e2130;
+  padding-left: 12px !important;
+  position: relative;
+  height: calc(100vh - 120px);
+  overflow-y: scroll;
+  overflow-x: hidden;
+}
+
+.chat-container::-webkit-scrollbar {
+  width: 8px;
+  position: absolute;
+  left: 0;
+}
+
+.chat-container::-webkit-scrollbar-track {
+  background: #1e2130;
+  border-radius: 0;
+  margin: 0;
+  position: absolute;
+  left: 0;
+}
+
+.chat-container::-webkit-scrollbar-thumb {
+  background-color: rgba(99, 102, 241, 0.5);
+  border-radius: 0;
+  position: absolute;
+  left: 0;
 }
 </style>

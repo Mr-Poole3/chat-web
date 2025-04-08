@@ -10,27 +10,38 @@ from base import app
 from jose import JWTError
 import bcrypt
 from mysql.connector import Error
+import os
+from dotenv import load_dotenv
+
+# 加载环境变量
+load_dotenv()
+
+# 获取环境模式
+ENV = os.getenv("ENV", "development")
 
 # JWT配置
-JWT_SECRET_KEY = "1234567890"
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "1234567890")
 JWT_ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 1440  # 24小时
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))  # 默认24小时
 
-# MySQL配置
-# db_config = {
-#     "host": "localhost",
-#     "user": "root",
-#     "password": "Tianhuiai123.",  # 在生产环境中应该使用环境变量
-#     "database": "ai"
-# }
-
-db_config = {
-    "host": "localhost",
-    "user": "root",
-    "port": 100,
-    "password": "610428",  # 在生产环境中应该使用环境变量
-    "database": "ai"
-}
+# 根据环境选择数据库配置
+if ENV == "production":
+    db_config = {
+        "host": os.getenv("DB_HOST", "localhost"),
+        "user": os.getenv("DB_USER", "root"),
+        "password": os.getenv("DB_PASSWORD", ""),
+        "database": os.getenv("DB_NAME", "ai"),
+        "port": int(os.getenv("DB_PORT", "3306"))
+    }
+else:
+    # 开发环境配置
+    db_config = {
+        "host": os.getenv("DEV_DB_HOST", "localhost"),
+        "user": os.getenv("DEV_DB_USER", "root"),
+        "password": os.getenv("DEV_DB_PASSWORD", ""),
+        "database": os.getenv("DEV_DB_NAME", "ai"),
+        "port": int(os.getenv("DEV_DB_PORT", "3306"))
+    }
 
 # 安全配置
 security = OAuth2PasswordBearer(tokenUrl="api/v1/auth/login", auto_error=False)

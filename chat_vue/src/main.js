@@ -5,8 +5,8 @@ import router from './router'
 import axios from 'axios'
 import { DotLottieVue } from '@lottiefiles/dotlottie-vue'
 
-// 设置 axios 默认配置
-axios.defaults.baseURL = '/api/v1'
+// 使用环境变量配置API基础URL
+axios.defaults.baseURL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
 axios.defaults.headers.common['Content-Type'] = 'application/json'
 axios.defaults.withCredentials = false
 

@@ -488,6 +488,11 @@ onMounted(() => {
     });
   }
   
+  // 打印环境变量，用于调试
+  console.log('环境:', import.meta.env.MODE);
+  console.log('API基础URL:', import.meta.env.VITE_API_BASE_URL);
+  console.log('WS基础URL:', import.meta.env.VITE_WS_BASE_URL);
+  
   // 监听窗口大小变化
   window.addEventListener('resize', handleResize);
   handleResize(); // 初始调用一次

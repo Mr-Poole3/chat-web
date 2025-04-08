@@ -129,6 +129,7 @@ const handleSubmit = async () => {
   margin: 0;
   background: linear-gradient(90deg, #4c4ed9, #6366f1);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
   letter-spacing: 1px;
 }
@@ -241,5 +242,35 @@ const handleSubmit = async () => {
 
 .register-link a:hover {
   text-decoration: underline;
+}
+
+/* 移动端适配 */
+@media (max-width: 480px) {
+  .login-form-wrapper {
+    padding: 30px 20px;
+    border-radius: 8px;
+  }
+  
+  .login-header h1 {
+    font-size: 22px;
+  }
+  
+  .form-group label {
+    font-size: 13px;
+  }
+  
+  .form-group input {
+    padding: 10px;
+    font-size: 14px;
+  }
+  
+  .login-button {
+    padding: 10px;
+    font-size: 15px;
+  }
+  
+  .error-message {
+    font-size: 13px;
+  }
 }
 </style>

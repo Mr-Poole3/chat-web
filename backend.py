@@ -111,11 +111,8 @@ async def fetch_deepseek_response(
         "Authorization": f"Bearer {DEEPSEEK_API_KEY}"
     }
     
-    # 为 DeepSeek-R1 模型添加思考过程的系统提示
+    # 简化系统提示，不再要求特定的Markdown格式
     system_message = "你是一个AI助手，请根据用户的问题给出回答。"
-    if model == "DeepSeek-R1":
-        system_message = """
-        你是一个AI助手，请根据用户的问题给出回答。尽量用中文回答用户问题。"""
     
     payload = {
         "model": model,
@@ -133,73 +130,50 @@ async def fetch_deepseek_response(
             async with client.stream("POST", DEEPSEEK_API_URL, json=payload, headers=headers, timeout=None) as response:
                 if response.status_code != 200:
                     error_detail = await response.aread()
-                    print(error_detail.decode("utf-8"))
+                    print(f"DeepSeek API 错误: {error_detail.decode('utf-8')}")
+                    response_queue.put({"error": f"DeepSeek API 错误: {error_detail.decode('utf-8')}", "status_code": response.status_code})
                     response_queue.put(None)  # Signal end of stream
                     return
                 
-                # 用于收集思考过程和实际回复
-                thought_process = []
-                is_thinking = False
-                is_collecting_thought = False
-                
                 async for line in response.aiter_lines():
-                    print(line)
-                    if line.strip():
-                        if line.startswith("data: "):
-                            try:
-                                json_str = line[6:].strip()  # Skip "data: "
-                                
-                                if not json_str or json_str == "[DONE]":
-                                    continue
-                                
-                                if not (json_str.startswith('{') or json_str.startswith('[')):
-                                    print(f"Skipping invalid JSON line: {json_str}")
-                                    continue
-                                
-                                data = json.loads(json_str)
-                                
-                                # Extract content from the delta
-                                if data["choices"] and len(data["choices"]) > 0:
-                                    delta = data["choices"][0]["delta"]
-                                    if "content" in delta and delta["content"]:
-                                        content = delta["content"]
-                                        
-                                        # 处理思考过程标记
-                                        if "<think>" in content and not is_thinking:
-                                            is_thinking = True
-                                            is_collecting_thought = True
-                                            content = content.replace("<think>", "")
-                                            thought_process.append(content)
-                                        elif "</think>" in content and is_thinking:
-                                            is_thinking = False
-                                            content = content.replace("</think>", "")
-                                            thought_process.append(content)
-                                            
-                                            # 发送完整的思考过程，保持原始格式
-                                            complete_thought = "".join(thought_process)
-                                            response_queue.put(f"<think>{complete_thought}</think>")
-                                            thought_process = []
-                                            is_collecting_thought = False
-                                        elif is_collecting_thought:
-                                            thought_process.append(content)
-                                        else:
-                                            # 直接发送内容，不做任何空格处理
-                                            response_queue.put(content)
+                    if not line.strip():
+                        continue
+                        
+                    if line.startswith("data: "):
+                        try:
+                            json_str = line[6:].strip()  # 去掉 "data: " 前缀
                             
-                            except json.JSONDecodeError as e:
-                                print(f"JSON decode error: {e}")
-                            except Exception as e:
-                                print(f"Error parsing SSE: {e}")
+                            if not json_str or json_str == "[DONE]":
+                                continue
+                            
+                            if not (json_str.startswith('{') or json_str.startswith('[')):
+                                print(f"跳过无效的JSON行: {json_str}")
+                                continue
+                            
+                            data = json.loads(json_str)
+                            
+                            # 处理增量响应
+                            if "choices" in data and len(data["choices"]) > 0:
+                                delta = data["choices"][0].get("delta", {})
+                                content = delta.get("content", "")
+                                
+                                if content:
+                                    # 直接将原始响应发送给前端，保持JSON格式
+                                    # 这样前端可以自行解析内容
+                                    response_queue.put(line)
+                        
+                        except json.JSONDecodeError as e:
+                            print(f"JSON解析错误: {e}")
+                        except Exception as e:
+                            print(f"处理SSE时出错: {e}")
                 
-                # 如果还有未发送的思考过程，发送它
-                if thought_process:
-                    complete_thought = "".join(thought_process)
-                    response_queue.put(f"<think>{complete_thought}</think>")
-                
-                # Signal end of stream
-                response_queue.put(None)
+                # 标记流结束
+                response_queue.put("data: [DONE]\n\n")
+                response_queue.put(None)  # Signal end of stream
     except Exception as e:
-        response_queue.put({"error": f"Error fetching DeepSeek response: {str(e)}", "status_code": 500})
+        error_msg = f"获取DeepSeek响应时出错: {str(e)}"
+        print(error_msg)
+        response_queue.put({"error": error_msg, "status_code": 500})
         response_queue.put(None)  # Signal end of stream
 
 
@@ -213,9 +187,15 @@ async def fetch_azure_response(model: str, prompt: str, max_tokens: int, tempera
             azure_endpoint=AZURE_ENDPOINT
         )
         
+        # 简化系统提示，不再要求特定的Markdown格式
+        system_message = "你是一个AI助手，请根据用户的问题给出回答。"
+        
         stream_resp = client.chat.completions.create(
             model=model,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": prompt}
+            ],
             max_tokens=max(max_tokens, 4096),
             temperature=temperature,
             stream=True
@@ -224,6 +204,7 @@ async def fetch_azure_response(model: str, prompt: str, max_tokens: int, tempera
         for chunk in stream_resp:
             if chunk.choices and chunk.choices[0].delta.content:
                 content = chunk.choices[0].delta.content
+                # 直接发送内容，不做任何处理
                 response_queue.put(content)
         
         # Signal end of stream
@@ -245,14 +226,17 @@ async def stream_from_queue(response_queue: queue.Queue):
             if isinstance(item, dict) and "error" in item:  # Error occurred
                 raise HTTPException(status_code=item.get("status_code", 500), detail=item["error"])
             
-            # 确保返回的是字符串类型，并且格式化为SSE格式
-            yield f"data: {item}\n\n"
+            # 直接发送item，不额外添加data:前缀（如果是DeepSeek原始响应，已经包含data:前缀）
+            if isinstance(item, str) and item.startswith("data: "):
+                yield item + "\n\n"
+            else:
+                yield f"data: {item}\n\n"
             
             response_queue.task_done()
         except queue.Empty:  # Add specific exception handling for empty queue
             await asyncio.sleep(0.01)
         except Exception as e:
-            print(f"Error in stream_from_queue: {e}")
+            print(f"stream_from_queue中出错: {e}")
             break
 
 

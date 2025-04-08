@@ -22,13 +22,13 @@
           :username="username"
           @logout="handleLogout"
           @change-model="selectedModel = $event"
+          @toggle-sidebar="toggleSidebar"
         />
 
         <!-- 聊天内容区 -->
         <ChatMessages 
           ref="messagesContainer"
           :messages="messages"
-          :renderMarkdown="renderMarkdown"
         />
 
         <!-- 底部输入区 -->
@@ -53,7 +53,6 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/user'
 import axios from 'axios'
-import { DotLottieVue } from '@lottiefiles/dotlottie-vue'
 
 /**
  * 流式响应处理逻辑:
@@ -61,7 +60,6 @@ import { DotLottieVue } from '@lottiefiles/dotlottie-vue'
  * 2. 实时解析并显示LLM的回复，支持DeepSeek和Azure模型
  * 3. 在消息流式传输过程中展示打字指示器和已收到的内容
  * 4. 处理流式传输结束后的状态更新
- * 5. 支持思考过程的展示
  */
 
 // 导入拆分的组件
@@ -153,7 +151,6 @@ const selectedModel = ref('DeepSeek-R1') // 默认选择DeepSeek-R1模型
 const username = ref('')
 const activeToolId = ref('chat') // 当前活跃的工具ID
 const sidebarExpanded = ref(false) // 侧边栏是否展开
-const animationCompleted = ref(false) // 动画是否已完成
 
 // 添加聊天会话相关变量
 let isFirstMessage = true
@@ -164,50 +161,6 @@ const chatSessions = ref([])
 const eventSource = ref(null)
 const waitingForResponse = ref(false)
 const currentAssistantMessage = ref('')
-
-const renderMarkdown = (content) => {
-  if (content === null || content === undefined) {
-    return '';
-  }
-  
-  // 处理思考过程（如果有）
-  if (content.includes('<think>') || content.includes('</think>')) {
-    let thoughtProcess = '';
-    let actualResponse = '';
-    
-    // 处理可能缺少开始标签的情况
-    if (!content.includes('<think>') && content.includes('</think>')) {
-      const parts = content.split('</think>');
-      thoughtProcess = parts[0] || '';
-      actualResponse = parts[1] || '';
-    } else {
-      const thinkMatch = content.match(/<think>([\s\S]*?)<\/think>/);
-      thoughtProcess = thinkMatch ? thinkMatch[1] : '';
-      actualResponse = content.replace(/<think>[\s\S]*?<\/think>/, '');
-    }
-    
-    // 创建思考内容的展示
-    let processedContent = '';
-    if (thoughtProcess) {
-      processedContent += `<div class="thinking-content">
-          <details>
-              <summary>思考过程</summary>
-              <div><pre>${thoughtProcess}</pre></div> 
-          </details>
-      </div>`;
-    }
-    
-    // 添加实际回答内容，不使用markdown解析
-    if (actualResponse) {
-      processedContent += `<div class="response-container">${actualResponse}</div>`;
-    }
-    
-    return processedContent;
-  }
-  
-  // 如果没有思考过程标记，直接展示内容
-  return `<div class="response-container">${content}</div>`;
-}
 
 const scrollToBottom = async () => {
   await nextTick()
@@ -280,78 +233,117 @@ const sendMessage = async () => {
     
     // 读取流数据并实时更新UI
     while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        // 标记消息流已结束
-        if (lastIndex >= 0 && messages.value[lastIndex].role === 'assistant') {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          // 标记消息流已结束
+          if (lastIndex >= 0 && messages.value[lastIndex].role === 'assistant') {
+            messages.value[lastIndex].streaming = false;
+          }
+          break;
+        }
+        
+        // 解码二进制数据
+        const chunk = decoder.decode(value, { stream: true });
+        buffer += chunk;
+        
+        // 处理buffer中的SSE数据
+        const lines = buffer.split('\n\n');
+        
+        // 创建一个新的buffer用于存储未处理完的行
+        let newBuffer = '';
+        
+        // 逐行处理
+        for (let i = 0; i < lines.length - 1; i++) {
+          const line = lines[i].trim();
+          
+          if (line.startsWith('data: ')) {
+            try {
+              // 提取data:后面的内容
+              const dataContent = line.substring(6).trim();
+              
+              // 跳过[DONE]标记
+              if (dataContent === '[DONE]') continue;
+              
+              // 尝试解析JSON
+              if (dataContent.startsWith('{')) {
+                try {
+                  const jsonData = JSON.parse(dataContent);
+                  
+                  // 处理DeepSeek或Azure风格的响应
+                  if (jsonData.choices && 
+                      Array.isArray(jsonData.choices) &&
+                      jsonData.choices.length > 0 && 
+                      jsonData.choices[0].delta && 
+                      typeof jsonData.choices[0].delta.content === 'string') {
+                    const content = jsonData.choices[0].delta.content;
+                    if (content !== null) {
+                      // 将内容添加到当前助手消息
+                      if (lastIndex >= 0 && 
+                          lastIndex < messages.value.length && 
+                          messages.value[lastIndex].role === 'assistant') {
+                        messages.value[lastIndex].content += content;
+                      }
+                    }
+                  }
+                } catch (jsonError) {
+                  console.error('解析JSON出错:', jsonError, dataContent);
+                  // 如果JSON解析失败但有内容，直接添加原始内容
+                  if (dataContent && dataContent !== '[DONE]' && 
+                      lastIndex >= 0 && 
+                      lastIndex < messages.value.length && 
+                      messages.value[lastIndex].role === 'assistant') {
+                    messages.value[lastIndex].content += dataContent;
+                  }
+                }
+              } else {
+                // 非JSON格式直接添加内容
+                if (dataContent && dataContent !== '[DONE]' && 
+                    lastIndex >= 0 && 
+                    lastIndex < messages.value.length && 
+                    messages.value[lastIndex].role === 'assistant') {
+                  messages.value[lastIndex].content += dataContent;
+                }
+              }
+            } catch (e) {
+              console.error('处理SSE数据时出错:', e, line);
+            }
+          }
+        }
+        
+        // 保留最后一行（可能不完整）
+        newBuffer = lines[lines.length - 1];
+        buffer = newBuffer;
+        
+        // 滚动到底部以显示最新消息
+        await scrollToBottom();
+      } catch (streamError) {
+        console.error('读取流数据时出错:', streamError);
+        // 更新最后一条消息以显示错误
+        if (lastIndex >= 0 && 
+            lastIndex < messages.value.length && 
+            messages.value[lastIndex].role === 'assistant') {
+          messages.value[lastIndex].content += '\n\n[读取响应时出错，请重试]';
           messages.value[lastIndex].streaming = false;
         }
         break;
       }
-      
-      // 解码二进制数据
-      const chunk = decoder.decode(value, { stream: true });
-      buffer += chunk;
-      
-      // 处理buffer中的SSE数据（可能包含多个data:行）
-      let processedBuffer = '';
-      const lines = buffer.split('\n');
-      
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-        
-        if (line.startsWith('data: ')) {
-          try {
-            // 提取data:后面的JSON内容
-            const dataContent = line.substring(6).trim();
-            
-            // 跳过[DONE]标记
-            if (dataContent === '[DONE]') continue;
-            
-            // 解析并处理不同模型的输出格式
-            if (dataContent.startsWith('{')) {
-              const jsonData = JSON.parse(dataContent);
-              
-              // 从DeepSeek或Azure的响应中提取内容
-              if (jsonData.choices && jsonData.choices[0].delta && jsonData.choices[0].delta.content) {
-                const content = jsonData.choices[0].delta.content;
-                if (content !== null) {
-                  // 将内容添加到当前助手消息
-                  if (lastIndex >= 0 && messages.value[lastIndex].role === 'assistant') {
-                    messages.value[lastIndex].content += content;
-                  }
-                }
-              }
-            } else {
-              // 如果不是JSON，直接将内容添加到消息中
-              if (lastIndex >= 0 && messages.value[lastIndex].role === 'assistant') {
-                messages.value[lastIndex].content += dataContent;
-              }
-            }
-          } catch (e) {
-            console.error('Error parsing SSE data:', e, line);
-          }
-        }
-      }
-      
-      // 保留未处理完的部分（可能是不完整的行）
-      const lastLineIndex = lines.length - 1;
-      buffer = lines[lastLineIndex].startsWith('data: ') ? lines[lastLineIndex] : '';
-      
-      // 滚动到底部以显示最新消息
-      await scrollToBottom();
     }
 
     loading.value = false;
     waitingForResponse.value = false;
     await scrollToBottom();
   } catch (error) {
-    console.error('Error in chat request:', error);
+    console.error('聊天请求错误:', error);
 
     // 更新最后一条消息为错误信息
     const lastIndex = messages.value.length - 1;
     if (lastIndex >= 0 && messages.value[lastIndex].role === 'assistant') {
-      messages.value[lastIndex].content = '抱歉，发生了错误，请稍后重试。';
+      messages.value[lastIndex].content = `
+抱歉，发生了错误，请稍后重试。
+
+错误详情: ${error.message || '未知错误'}
+      `.trim();
       messages.value[lastIndex].streaming = false;
     }
 
@@ -376,9 +368,6 @@ const createNewChat = () => {
   // 重置消息
   messages.value = [];
   isFirstMessage = true;
-  
-  // 重置动画状态
-  animationCompleted.value = false;
   
   // 生成新的会话ID
   currentChatId = Date.now().toString();
@@ -410,7 +399,7 @@ const loadTool = (toolId) => {
   // 显示选定的工具页面
   const selectedToolPage = document.getElementById(`${toolId}-page`);
   if (selectedToolPage) {
-    selectedToolPage.style.display = 'block';
+    selectedToolPage.style.display = 'flex';
   }
   
   // 更新活跃工具ID
@@ -472,30 +461,23 @@ const toggleSidebar = () => {
   sidebarExpanded.value = !sidebarExpanded.value;
 }
 
-// 处理动画完成事件
-const handleAnimationComplete = () => {
-  animationCompleted.value = true;
-  // 保持在最后一帧
-  nextTick(() => {
-    const lottieElement = document.querySelector('.welcome-animation');
-    if (lottieElement) {
-      // 设置为140帧，即动画的最后一帧
-      lottieElement.setFrame(140);
-    }
-  });
+// 检测窗口大小变化
+const handleResize = () => {
+  if (window.innerWidth > 768) {
+    // 在大屏幕上默认展开侧边栏
+    sidebarExpanded.value = false;
+  }
 }
 
 // 在组件卸载时关闭SSE连接
 onUnmounted(() => {
-  closeEventSource()
+  closeEventSource();
+  window.removeEventListener('resize', handleResize);
 })
 
 onMounted(() => {
   loadUserInfo();
   loadChatTool(); // 默认加载聊天工具
-  
-  // 初始化动画状态
-  animationCompleted.value = false;
   
   // 自动调整文本框高度
   const userInputElement = document.getElementById('user-input');
@@ -505,6 +487,10 @@ onMounted(() => {
       this.style.height = (this.scrollHeight) + 'px';
     });
   }
+  
+  // 监听窗口大小变化
+  window.addEventListener('resize', handleResize);
+  handleResize(); // 初始调用一次
 });
 
 watch(messages, scrollToBottom, { deep: true })
@@ -512,4 +498,68 @@ watch(messages, scrollToBottom, { deep: true })
 
 <style>
 @import '@/assets/styles/chat.css';
+
+/* 移动端适配样式 */
+@media (max-width: 768px) {
+  .container {
+    flex-direction: column;
+  }
+  
+  .main-content {
+    width: 100%;
+  }
+  
+  .sidebar {
+    position: fixed;
+    left: -260px;
+    top: 0;
+    height: 100%;
+    z-index: 1000;
+    transition: left 0.3s ease;
+    width: 260px;
+  }
+  
+  .sidebar.expanded {
+    left: 0;
+  }
+  
+  .sidebar-overlay.active {
+    display: block;
+  }
+  
+  .message-content {
+    max-width: 85%;
+  }
+  
+  .user-message .message-content {
+    max-width: 85%;
+  }
+  
+  .bot-message .message-content {
+    max-width: 90%;
+  }
+  
+  .header {
+    padding: 10px 15px;
+  }
+  
+  .tool-item {
+    padding: 12px 15px;
+  }
+  
+  .input-container {
+    padding: 15px 10px 10px;
+  }
+  
+  #user-input {
+    padding: 12px 45px;
+    font-size: 14px;
+  }
+  
+  .tool-iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+  }
+}
 </style>

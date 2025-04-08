@@ -55,6 +55,10 @@
 </template>
 
 <script setup>
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
+
 defineProps({
   expanded: {
     type: Boolean,
@@ -67,4 +71,8 @@ defineProps({
 })
 
 defineEmits(['load-chat-tool', 'load-tool'])
+
+const navigateTo = (path) => {
+  router.push(path)
+}
 </script> 

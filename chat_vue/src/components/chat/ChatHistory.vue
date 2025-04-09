@@ -117,7 +117,7 @@ const formatTime = (timestamp) => {
 }
 
 .new-chat-btn:hover {
-  background-color: #0d8c6d;
+  background-color: #121420;
 }
 
 .history-list {

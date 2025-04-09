@@ -20,20 +20,62 @@
       >
         <div :class="['avatar', message.role === 'user' ? 'user-avatar' : 'bot-avatar']">
           <template v-if="message.role === 'user'">🧑‍💻</template>
-          <template v-else>🤖</template>
+          <template v-else>
+            <DotLottieVue
+              :ref="el => { if (message.streaming) botAnimation = el }"
+              style="height: 72px; width: 72px"
+              :autoplay="message.streaming"
+              :loop="message.streaming"
+              :frame="message.streaming ? undefined : 208"
+              src="https://lottie.host/671ea251-b500-49e5-8054-a5be2cec3870/hW6jND60hq.lottie"
+              @complete="onBotAnimationComplete"
+              @ready="onBotAnimationReady(message)"
+            />
+          </template>
         </div>
+        <!-- 用户消息且处于编辑状态 -->
+        <div v-if="message.role === 'user' && editingIndex === index" 
+          class="message-content markdown-content user-message-content"
+        >
+          <textarea
+            v-model="editingContent"
+            class="edit-textarea"
+            @keydown.enter.exact.prevent="saveEdit"
+            @keydown.esc="cancelEdit"
+            ref="editTextarea"
+          ></textarea>
+          <div class="edit-actions">
+            <button class="edit-btn save" @click="saveEdit">确定</button>
+            <button class="edit-btn cancel" @click="cancelEdit">取消</button>
+          </div>
+        </div>
+        <!-- 普通消息显示 -->
         <div 
+          v-else
           class="message-content markdown-content" 
-          v-if="!message.streaming" 
-          v-html="renderedContent(message.content)"
-        ></div>
-        <div class="message-content" v-else>
-          <div v-if="message.content" class="markdown-content" v-html="renderedContent(message.content)"></div>
-          <div class="typing-indicator" v-if="message.streaming">
-            <div class="wave-dots">
-              <div class="dot"></div>
-              <div class="dot"></div>
-              <div class="dot"></div>
+          :class="{ 'user-message-content': message.role === 'user' }"
+        >
+          <!-- 用户消息的编辑按钮 -->
+          <button 
+            v-if="message.role === 'user'"
+            class="message-edit-btn"
+            @click="startEdit(index, message.content)"
+            title="编辑消息"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+            </svg>
+          </button>
+          <div v-if="!message.streaming" v-html="renderedContent(message.content)"></div>
+          <div v-else>
+            <div v-if="message.content" class="markdown-content" v-html="renderedContent(message.content)"></div>
+            <div class="typing-indicator" v-if="message.streaming">
+              <div class="wave-dots">
+                <div class="dot"></div>
+                <div class="dot"></div>
+                <div class="dot"></div>
+              </div>
             </div>
           </div>
         </div>
@@ -43,20 +85,65 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, watch, nextTick, onBeforeMount } from 'vue'
+import { computed, ref, onMounted, watch, nextTick, onBeforeMount, onUnmounted } from 'vue'
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github-dark.css'
 import 'github-markdown-css/github-markdown.css'
 import { DotLottieVue } from '@lottiefiles/dotlottie-vue'
 
-// 先定义props
+// 先定义props和emits
 const props = defineProps({
   messages: {
     type: Array,
     default: () => []
   }
 })
+
+const emit = defineEmits(['edit-message'])
+
+// 编辑相关的状态
+const editingIndex = ref(-1)
+const editingContent = ref('')
+
+// 机器人动画相关
+const botAnimation = ref(null)
+
+// 开始编辑消息
+const startEdit = (index, content) => {
+  editingIndex.value = index
+  editingContent.value = content
+  // 在下一个 tick 调整文本框高度
+  nextTick(() => {
+    const textarea = document.querySelector('.edit-textarea')
+    if (textarea) {
+      adjustTextareaHeight(textarea)
+    }
+  })
+}
+
+// 添加文本框高度自动调整函数
+const adjustTextareaHeight = (textarea) => {
+  textarea.style.height = 'auto'
+  textarea.style.height = textarea.scrollHeight + 'px'
+}
+
+// 保存编辑
+const saveEdit = () => {
+  if (editingContent.value.trim()) {
+    emit('edit-message', {
+      index: editingIndex.value,
+      content: editingContent.value.trim()
+    })
+  }
+  cancelEdit()
+}
+
+// 取消编辑
+const cancelEdit = () => {
+  editingIndex.value = -1
+  editingContent.value = ''
+}
 
 // 创建代码复制指令
 const vCopy = {
@@ -159,13 +246,64 @@ onMounted(() => {
       }
     }, 2000)
   }
+  // 监听文本框输入事件
+  document.addEventListener('input', (e) => {
+    if (e.target && e.target.classList.contains('edit-textarea')) {
+      adjustTextareaHeight(e.target)
+    }
+  })
 })
+
+// 动画准备就绪时的回调
+const onBotAnimationReady = (message) => {
+  try {
+    if (botAnimation.value && !message.streaming) {
+      // 如果消息不在流式传输中，设置为第208帧
+      botAnimation.value.frame = 208;
+      botAnimation.value.autoplay = false;
+    }
+  } catch (error) {
+    console.error('Error in onBotAnimationReady:', error);
+  }
+}
+
+// 机器人动画完成时的回调
+const onBotAnimationComplete = () => {
+  try {
+    if (botAnimation.value) {
+      // 如果消息还在流式传输中，继续播放动画
+      if (props.messages.some(m => m.streaming)) {
+        botAnimation.value.autoplay = true;
+      } else {
+        // 否则停止动画并设置到第208帧
+        botAnimation.value.autoplay = false;
+        botAnimation.value.frame = 208;
+      }
+    }
+  } catch (error) {
+    console.error('Error in onBotAnimationComplete:', error);
+  }
+}
+
+// 监听消息流式状态变化
+watch(() => props.messages, (newMessages) => {
+  try {
+    const hasStreaming = newMessages.some(m => m.streaming);
+    if (!hasStreaming && botAnimation.value) {
+      botAnimation.value.autoplay = false;
+      botAnimation.value.frame = 208;
+    }
+  } catch (error) {
+    console.error('Error in messages watcher:', error);
+  }
+}, { deep: true })
 
 // 创建markdown-it实例并配置
 const md = new MarkdownIt({
   html: true,
   linkify: true,
   typographer: true,
+  breaks: true,  // 启用换行符转换
   highlight: function (str, lang) {
     if (lang && hljs.getLanguage(lang)) {
       try {
@@ -239,7 +377,9 @@ const renderedContent = (content) => {
     }
     
     // 如果没有思考过程标记，直接以Markdown解析内容
-    let renderedHtml = md.render(content);
+    // 在渲染前，确保换行符被正确处理
+    let processedContent = content.replace(/\n/g, '  \n'); // 在每个换行符前添加两个空格
+    let renderedHtml = md.render(processedContent);
     
     // 为所有代码块添加复制按钮
     renderedHtml = addCopyButtonToCodeBlocks(renderedHtml);
@@ -282,6 +422,25 @@ const addCopyButtonToCodeBlocks = (html) => {
     `;
   });
 }
+
+// 监听编辑内容变化
+watch(editingContent, () => {
+  nextTick(() => {
+    const textarea = document.querySelector('.edit-textarea')
+    if (textarea) {
+      adjustTextareaHeight(textarea)
+    }
+  })
+})
+
+// 在组件卸载时移除事件监听
+onUnmounted(() => {
+  document.removeEventListener('input', (e) => {
+    if (e.target && e.target.classList.contains('edit-textarea')) {
+      adjustTextareaHeight(e.target)
+    }
+  })
+})
 </script>
 
 <style>
@@ -711,7 +870,7 @@ const addCopyButtonToCodeBlocks = (html) => {
   font-family: 'JetBrains Mono', monospace;
 }
 
-/* 消息样式 */
+/* 消息基础样式 */
 .message {
   display: flex;
   margin-bottom: 20px;
@@ -727,16 +886,17 @@ const addCopyButtonToCodeBlocks = (html) => {
   border-radius: 8px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
   position: relative;
-  max-width: 65%;
-  width: auto;
+  width: 100%;
+  min-width: 200px;
   overflow-wrap: break-word;
   color: #e0e0ff;
-  contain: content; /* 防止内容溢出影响布局 */
+  contain: content;
 }
 
 .user-message {
   flex-direction: row-reverse;
   justify-content: flex-start;
+  width: 100%;
 }
 
 .user-message .message-content {
@@ -745,21 +905,37 @@ const addCopyButtonToCodeBlocks = (html) => {
   margin-right: 16px;
   margin-left: 0;
   color: #e0e0ff;
+  width: fit-content;
+  max-width: 600px;
 }
 
-.bot-message {
-  justify-content: flex-start;
+/* 编辑状态下的消息容器样式 */
+.user-message .message-content.user-message-content {
+  width: 100% !important;
+  max-width: 600px !important;
 }
 
-.bot-message .message-content {
-  background-color: rgba(30, 33, 48, 0.8);
-  border: 1px solid rgba(30, 33, 48, 0.8);
-  margin-left: 16px;
-  max-width: 85%;
+.edit-textarea {
+  width: 100%;
+  min-width: 200px;
+  min-height: 24px;
+  height: auto;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background-color: transparent;
   color: #e0e0ff;
+  font-size: 14px;
+  resize: none;
+  margin-bottom: 8px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  line-height: 1.6;
+  overflow-y: hidden;
+  box-sizing: border-box;
+  display: block;
 }
 
-/* 桌面端固定宽度 */
+/* 桌面端样式 */
 @media (min-width: 768px) {
   .bot-message .message-content {
     width: 800px;
@@ -767,7 +943,12 @@ const addCopyButtonToCodeBlocks = (html) => {
   }
   
   .user-message .message-content {
-    width: auto;
+    width: fit-content;
+    max-width: 600px;
+  }
+
+  .user-message .message-content.user-message-content {
+    width: inherit;
     max-width: 600px;
   }
 }
@@ -781,6 +962,52 @@ const addCopyButtonToCodeBlocks = (html) => {
   justify-content: center;
   font-size: 18px;
   flex-shrink: 0;
+}
+
+/* 移动端头像样式 */
+@media (max-width: 768px) {
+  .avatar {
+    width: 48px;
+    height: 48px;
+    font-size: 24px;
+  }
+
+  .bot-avatar {
+    width: 48px !important;
+    height: 48px !important;
+  }
+
+  .bot-avatar dotlottie-vue {
+    width: 120% !important;
+    height: 120% !important;
+    transform: scale(2) !important;
+  }
+
+  .user-avatar {
+    font-size: 28px;
+  }
+}
+
+.user-avatar {
+  background: transparent;
+}
+
+.bot-avatar {
+  background: rgba(99, 102, 241, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 0;
+}
+
+.bot-avatar dotlottie-vue {
+  width: 100% !important;
+  height: 100% !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: scale(1.5);
 }
 
 /* 聊天容器样式 */
@@ -798,5 +1025,152 @@ const addCopyButtonToCodeBlocks = (html) => {
   max-width: 1200px;
   margin: 0 auto;
   scroll-behavior: smooth; /* 平滑滚动 */
+}
+
+/* 修改编辑相关样式 */
+.edit-textarea {
+  width: 100%;
+  min-width: 200px;
+  min-height: 24px;
+  height: auto;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background-color: transparent;
+  color: #e0e0ff;
+  font-size: 14px;
+  resize: none;
+  margin-bottom: 8px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  line-height: 1.6;
+  overflow-y: hidden;
+  box-sizing: border-box;
+  display: block;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.edit-textarea:focus {
+  outline: none;
+}
+
+.edit-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.edit-btn {
+  padding: 4px 12px;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.edit-btn.save {
+  background-color: #6366f1;
+  color: white;
+}
+
+.edit-btn.save:hover {
+  background-color: #4f46e5;
+}
+
+.edit-btn.cancel {
+  background-color: transparent;
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  color: #e0e0ff;
+}
+
+.edit-btn.cancel:hover {
+  background-color: rgba(99, 102, 241, 0.1);
+}
+
+.user-message-content {
+  position: relative;
+  width: inherit;
+  min-width: 200px;
+  box-sizing: border-box;
+}
+
+@media (min-width: 768px) {
+  .user-message-content {
+    max-width: 600px;
+  }
+}
+
+.user-message-content:hover .message-edit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 1;
+}
+
+.message-edit-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 4px;
+  background-color: rgba(99, 102, 241, 0.2);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 4px;
+  color: #e0e0ff;
+  cursor: pointer;
+  display: none;
+  transition: all 0.2s ease;
+  z-index: 10;
+  opacity: 0;
+}
+
+.message-edit-btn:hover {
+  background-color: rgba(99, 102, 241, 0.4);
+}
+
+/* 编辑状态下的消息容器样式 */
+.user-message .message-content.markdown-content.user-message-content {
+  width: fit-content;
+  min-width: 200px;
+  max-width: 600px;
+}
+
+/* 移动端样式调整 */
+@media (max-width: 768px) {
+  .message-content {
+    max-width: calc(100% - 80px) !important;
+    width: calc(100% - 80px) !important;
+  }
+
+  .user-message .message-content,
+  .bot-message .message-content {
+    max-width: calc(100% - 80px) !important;
+    width: calc(100% - 80px) !important;
+    margin-left: 16px;
+    margin-right: 16px;
+  }
+
+  .edit-textarea {
+    width: calc(100% - 32px) !important;
+    max-width: calc(100% - 32px) !important;
+  }
+
+  .input-box textarea {
+    max-width: calc(100% - 80px) !important;
+    width: calc(100% - 80px) !important;
+  }
+}
+
+/* 桌面端样式 */
+@media (min-width: 769px) {
+  .bot-message .message-content {
+    width: 800px;
+    max-width: 800px;
+  }
+  
+  .user-message .message-content {
+    width: fit-content;
+    max-width: 600px;
+  }
 }
 </style> 

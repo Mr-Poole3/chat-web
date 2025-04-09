@@ -1,38 +1,50 @@
 <template>
-  <div class="input-container">
-    <div class="input-box">
-      <button id="new-chat-button" class="input-button new-chat-button" @click="$emit('new-chat')" title="新建会话">
-        <svg viewBox="0 0 1024 1024" width="24" height="24">
-          <path d="M904.2 344.3c-21.5-50.7-52.2-96.3-91.3-135.4s-84.6-69.8-135.4-91.3C625 95.5 569.3 84.2 511.8 84.2S398.5 95.5 346 117.7c-50.7 21.5-96.3 52.2-135.4 91.3s-69.8 84.6-91.3 135.4c-22.2 52.5-33.5 108.3-33.5 165.8S97.1 623.5 119.3 676c21.5 50.7 52.2 96.3 91.3 135.4 39.1 39.1 84.6 69.8 135.4 91.3 52.5 22.2 108.3 33.5 165.8 33.5s113.3-11.3 165.8-33.5c50.7-21.5 96.3-52.2 135.4-91.3 39.1-39.1 69.8-84.6 91.3-135.4 22.2-52.5 33.5-108.3 33.5-165.8s-11.4-113.4-33.6-165.9zM511.8 876C310 876 145.9 711.8 145.9 510.1S310 144.2 511.8 144.2c201.7 0 365.9 164.1 365.9 365.9 0 201.7-164.2 365.9-365.9 365.9z" fill="#e6e6e6"></path>
-          <path d="M737 481H542V286c0-16.5-13.5-30-30-30s-30 13.5-30 30v195H287c-16.5 0-30 13.5-30 30s13.5 30 30 30h195v195c0 16.5 13.5 30 30 30s30-13.5 30-30V541h195c16.5 0 30-13.5 30-30s-13.5-30-30-30z" fill="#e6e6e6"></path>
-        </svg>
+  <div 
+    class="vanishing-input-container"
+    :class="{ 'submitting': isSubmitting }"
+  >
+    <button
+      class="new-chat-button"
+      @click="$emit('new-chat')"
+      title="新对话"
+    >
+      <i class="fas fa-plus"></i>
+    </button>
+    <textarea
+      ref="inputRef"
+      :value="inputMessage"
+      @input="handleInput"
+      @keydown.enter.exact.prevent="handleSubmit"
+      @keydown.enter.shift.exact="$emit('new-line', $event)"
+      :disabled="loading"
+      :placeholder="currentPlaceholder"
+      class="vanishing-input"
+      rows="1"
+    ></textarea>
+    <div class="button-group">
+      <button
+        v-if="loading"
+        class="stop-button"
+        @click="$emit('stop-generation')"
+        title="停止生成"
+      >
+        <i class="fas fa-stop"></i>
       </button>
-      <textarea
-        :value="inputMessage"
-        @input="$emit('update:inputMessage', $event.target.value)"
-        placeholder="发送消息..."
-        @keydown.enter.exact.prevent="$emit('send-message')"
-        @keydown.enter.shift.exact="$emit('new-line', $event)"
-        :disabled="loading"
-        id="user-input"
-        rows="1"
-      ></textarea>
-      <button 
-        id="send-button" 
-        class="input-button send-button"
-        @click="$emit('send-message')" 
+      <button
+        class="send-button"
+        @click="handleSubmit"
         :disabled="loading || !inputMessage.trim()"
       >
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-          <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"></path>
-        </svg>
+        <i class="fas fa-paper-plane"></i>
       </button>
     </div>
   </div>
 </template>
 
 <script setup>
-defineProps({
+import { ref, onMounted, onUnmounted } from 'vue'
+
+const props = defineProps({
   inputMessage: {
     type: String,
     required: true
@@ -43,32 +55,284 @@ defineProps({
   }
 })
 
-defineEmits(['update:inputMessage', 'send-message', 'new-line', 'new-chat'])
+const emit = defineEmits(['update:inputMessage', 'send-message', 'new-line', 'stop-generation', 'new-chat'])
+const inputRef = ref(null)
+
+// 占位符数组
+const placeholders = [
+  "有什么我可以帮你的吗？",
+  "问我任何问题...",
+  "让我来协助你...",
+  "输入你的问题..."
+]
+
+const currentPlaceholder = ref(placeholders[0])
+const isSubmitting = ref(false)
+let placeholderInterval
+
+// 处理输入
+const handleInput = (e) => {
+  const textarea = e.target
+  emit('update:inputMessage', textarea.value)
+  
+  // 自动调整高度
+  textarea.style.height = 'auto'
+  textarea.style.height = Math.min(textarea.scrollHeight, 200) + 'px'
+}
+
+// 处理提交
+const handleSubmit = async () => {
+  if (props.inputMessage.trim() && !props.loading) {
+    isSubmitting.value = true
+    // 等待动画完成
+    await new Promise(resolve => setTimeout(resolve, 300))
+    emit('send-message')
+    // 重置提交状态和高度
+    setTimeout(() => {
+      isSubmitting.value = false
+      if (inputRef.value) {
+        inputRef.value.style.height = 'auto'
+      }
+    }, 100)
+  }
+}
+
+// 循环显示占位符
+const rotatePlaceholders = () => {
+  let index = 0
+  placeholderInterval = setInterval(() => {
+    index = (index + 1) % placeholders.length
+    currentPlaceholder.value = placeholders[index]
+  }, 3000)
+}
+
+onMounted(() => {
+  rotatePlaceholders()
+})
+
+onUnmounted(() => {
+  if (placeholderInterval) {
+    clearInterval(placeholderInterval)
+  }
+})
 </script>
 
 <style scoped>
-/* 移动端样式适配 */
-@media (max-width: 576px) {
-  .input-button {
-    position: relative !important;
-    bottom: auto !important;
-    transform: translateY(0) !important;
+.vanishing-input-container {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background-color: #161923;
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: 12px;
+  padding: 12px 16px;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  max-width: 1000px;
+  width: 90%;
+  margin: 16px auto;
+}
+
+.vanishing-input-container:focus-within {
+  border-color: rgba(99, 102, 241, 0.5);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.1);
+}
+
+.new-chat-button {
+  background-color: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+  height: 36px;
+  min-width: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  border-radius: 8px;
+  margin-top: 2px;
+}
+
+.new-chat-button:hover {
+  background-color: rgba(99, 102, 241, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.vanishing-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 16px;
+  line-height: 1.5;
+  outline: none;
+  padding: 4px 0;
+  transition: all 0.3s ease;
+  resize: none;
+  min-height: 24px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.vanishing-input::placeholder {
+  color: rgba(255, 255, 255, 0.5);
+  transition: all 0.3s ease;
+}
+
+.vanishing-input:focus::placeholder {
+  opacity: 0;
+  transform: translateX(-10px);
+}
+
+/* 自定义滚动条样式 */
+.vanishing-input::-webkit-scrollbar {
+  width: 4px;
+}
+
+.vanishing-input::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.vanishing-input::-webkit-scrollbar-thumb {
+  background-color: rgba(99, 102, 241, 0.3);
+  border-radius: 2px;
+}
+
+.vanishing-input::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(99, 102, 241, 0.5);
+}
+
+.button-group {
+  display: flex;
+  gap: 8px;
+  z-index: 2;
+  margin-top: 2px;
+}
+
+.send-button, .stop-button {
+  background-color: #4f46e5;
+  border: none;
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+  height: 36px;
+  width: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.stop-button {
+  background-color: #dc2626;
+}
+
+.send-button:hover {
+  background-color: #4338ca;
+  transform: translateY(-1px);
+}
+
+.stop-button:hover {
+  background-color: #b91c1c;
+  transform: translateY(-1px);
+}
+
+.send-button:disabled {
+  background-color: #4f46e5;
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+button i {
+  font-size: 14px;
+}
+
+/* 禁用状态样式 */
+.vanishing-input:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+/* 动画效果 */
+@keyframes slideLeft {
+  0% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes slideRight {
+  0% {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.vanishing-input-container.submitting .vanishing-input {
+  animation: slideLeft 0.3s ease-out forwards;
+  pointer-events: none;
+}
+
+.vanishing-input-container:not(.submitting) .vanishing-input {
+  animation: slideRight 0.3s ease-out;
+}
+
+/* 提交时的波纹效果 */
+@keyframes ripple {
+  0% {
+    transform: scale(0);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(4);
+    opacity: 0;
+  }
+}
+
+.vanishing-input-container.submitting::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 20px;
+  height: 20px;
+  background: rgba(99, 102, 241, 0.2);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  animation: ripple 0.6s ease-out forwards;
+}
+
+/* 移动端适配 */
+@media (max-width: 640px) {
+  .vanishing-input-container {
+    margin: 12px;
+    padding: 8px 12px;
+    width: calc(100% - 24px);
   }
   
-  .new-chat-button {
-    margin-right: 8px;
+  .vanishing-input {
+    font-size: 14px;
   }
   
-  .send-button {
-    margin-left: 8px;
+  .new-chat-button,
+  .send-button,
+  .stop-button {
+    height: 32px;
+    width: 32px;
   }
   
-  #user-input {
-    padding: 10px 12px !important;
-  }
-  
-  .input-box {
-    align-items: center !important;
+  button i {
+    font-size: 12px;
   }
 }
 </style> 

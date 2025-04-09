@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -103,7 +103,8 @@ async def fetch_deepseek_response(
     prompt: str,
     max_tokens: int,
     temperature: float,
-    response_queue: queue.Queue
+    response_queue: queue.Queue,
+    request: Request
 ):
     """Fetch response from DeepSeek API and put into queue"""
     headers = {
@@ -136,12 +137,17 @@ async def fetch_deepseek_response(
                     return
                 
                 async for line in response.aiter_lines():
+                    # 检查客户端是否已断开连接
+                    if await request.is_disconnected():
+                        print("客户端已断开连接")
+                        break
+                        
                     if not line.strip():
                         continue
                         
                     if line.startswith("data: "):
                         try:
-                            json_str = line[6:].strip()  # 去掉 "data: " 前缀
+                            json_str = line[6:].strip()
                             
                             if not json_str or json_str == "[DONE]":
                                 continue
@@ -152,15 +158,13 @@ async def fetch_deepseek_response(
                             
                             data = json.loads(json_str)
                             
-                            # 处理增量响应
                             if "choices" in data and len(data["choices"]) > 0:
                                 delta = data["choices"][0].get("delta", {})
                                 content = delta.get("content", "")
                                 
                                 if content:
-                                    # 直接将原始响应发送给前端，保持JSON格式
-                                    # 这样前端可以自行解析内容
                                     response_queue.put(line)
+                                    print(line)
                         
                         except json.JSONDecodeError as e:
                             print(f"JSON解析错误: {e}")
@@ -170,15 +174,29 @@ async def fetch_deepseek_response(
                 # 标记流结束
                 response_queue.put("data: [DONE]\n\n")
                 response_queue.put(None)  # Signal end of stream
+    except httpx.RequestError as e:
+        if str(e).startswith("Client disconnect"):
+            print("客户端主动断开连接")
+            return
+        error_msg = f"获取DeepSeek响应时出错: {str(e)}"
+        print(error_msg)
+        response_queue.put({"error": error_msg, "status_code": 500})
+        response_queue.put(None)
     except Exception as e:
         error_msg = f"获取DeepSeek响应时出错: {str(e)}"
         print(error_msg)
         response_queue.put({"error": error_msg, "status_code": 500})
-        response_queue.put(None)  # Signal end of stream
+        response_queue.put(None)
 
 
-async def fetch_azure_response(model: str, prompt: str, max_tokens: int, temperature: float,
-                               response_queue: queue.Queue):
+async def fetch_azure_response(
+    model: str, 
+    prompt: str, 
+    max_tokens: int, 
+    temperature: float,
+    response_queue: queue.Queue,
+    request: Request
+):
     """Fetch response from Azure OpenAI API using the official client"""
     try:
         client = AzureOpenAI(
@@ -187,7 +205,6 @@ async def fetch_azure_response(model: str, prompt: str, max_tokens: int, tempera
             azure_endpoint=AZURE_ENDPOINT
         )
         
-        # 简化系统提示，不再要求特定的Markdown格式
         system_message = "你是一个AI助手，请根据用户的问题给出回答。"
         
         stream_resp = client.chat.completions.create(
@@ -202,9 +219,13 @@ async def fetch_azure_response(model: str, prompt: str, max_tokens: int, tempera
         )
         
         for chunk in stream_resp:
+            # 检查客户端是否已断开连接
+            if await request.is_disconnected():
+                print("客户端已断开连接")
+                break
+                
             if chunk.choices and chunk.choices[0].delta.content:
                 content = chunk.choices[0].delta.content
-                # 构造与DeepSeek相同格式的响应
                 response_data = {
                     "choices": [{
                         "delta": {
@@ -212,17 +233,19 @@ async def fetch_azure_response(model: str, prompt: str, max_tokens: int, tempera
                         }
                     }]
                 }
-                # 转换为SSE格式
                 sse_message = f"data: {json.dumps(response_data)}\n\n"
                 response_queue.put(sse_message)
-        
+                print(sse_message)
+                
         # 发送结束标记
         response_queue.put("data: [DONE]\n\n")
-        # Signal end of stream
         response_queue.put(None)
     except Exception as e:
+        if str(e).startswith("Client disconnect"):
+            print("客户端主动断开连接")
+            return
         response_queue.put({"error": f"Error fetching Azure response: {str(e)}", "status_code": 500})
-        response_queue.put(None)  # Signal end of stream
+        response_queue.put(None)
 
 
 async def stream_from_queue(response_queue: queue.Queue):
@@ -252,26 +275,33 @@ async def stream_from_queue(response_queue: queue.Queue):
 
 
 @app.post("/api/v1/tools/chat")
-async def chat(request: ChatRequest):
+async def chat(request: Request, chat_request: ChatRequest):
     """Chat endpoint that streams responses from the selected model API"""
     try:
         response_queue = queue.Queue()
         
-        if request.model in ["DeepSeek-V3", "DeepSeek-R1"]:
-            # Start fetching in a background task
+        if chat_request.model in ["DeepSeek-V3", "DeepSeek-R1"]:
             t_openai = asyncio.create_task(fetch_deepseek_response(
-                request.model, request.prompt, request.max_tokens, request.temperature, response_queue
+                chat_request.model, 
+                chat_request.prompt, 
+                chat_request.max_tokens, 
+                chat_request.temperature, 
+                response_queue,
+                request
             ))
             
             return StreamingResponse(
                 stream_from_queue(response_queue),
                 media_type="text/event-stream"
             )
-        elif request.model in ["gpt-4o-mini", "gpt-4o"]:
-            
-            # Start fetching in a background task
+        elif chat_request.model in ["gpt-4o-mini", "gpt-4o"]:
             t_deepseek = asyncio.create_task(fetch_azure_response(
-                request.model, request.prompt, request.max_tokens, request.temperature, response_queue
+                chat_request.model, 
+                chat_request.prompt, 
+                chat_request.max_tokens, 
+                chat_request.temperature, 
+                response_queue,
+                request
             ))
             
             return StreamingResponse(
@@ -279,7 +309,7 @@ async def chat(request: ChatRequest):
                 media_type="text/event-stream"
             )
         else:
-            raise HTTPException(status_code=400, detail=f"Unsupported model: {request.model}")
+            raise HTTPException(status_code=400, detail=f"Unsupported model: {chat_request.model}")
     except HTTPException as e:
         raise e
     except Exception as e:

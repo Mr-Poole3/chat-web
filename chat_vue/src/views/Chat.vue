@@ -34,6 +34,7 @@
         <ChatMessages 
           ref="messagesContainer"
           :messages="messages"
+          @edit-message="handleEditMessage"
         />
 
         <!-- 底部输入区 -->
@@ -44,6 +45,7 @@
           @send-message="sendMessage"
           @new-chat="createNewChat"
           @new-line="newline"
+          @stop-generation="stopGeneration"
         />
       </div>
       
@@ -168,6 +170,9 @@ const MAX_HISTORY = 15 // 最大历史记录数量
 const eventSource = ref(null)
 const waitingForResponse = ref(false)
 const currentAssistantMessage = ref('')
+
+// 添加 abortController 变量
+const abortController = ref(null)
 
 const scrollToBottom = async (force = false) => {
   if (!force && !shouldAutoScroll.value) return
@@ -348,6 +353,9 @@ const sendMessage = async () => {
       streaming: true
     })
 
+    // 创建新的 AbortController
+    abortController.value = new AbortController()
+
     // 使用fetch API请求流式响应
     const response = await fetch('/api/v1/tools/chat', {
       method: 'POST',
@@ -361,7 +369,8 @@ const sendMessage = async () => {
         temperature: 0.7,
         stream: true,
         feature: currentFeature.value.id
-      })
+      }),
+      signal: abortController.value.signal // 添加 signal
     });
 
     if (!response.ok) {
@@ -465,12 +474,11 @@ const sendMessage = async () => {
           await scrollToBottom();
         }
       } catch (streamError) {
-        console.error('读取流数据时出错:', streamError);
         // 更新最后一条消息以显示错误
         if (lastIndex >= 0 && 
             lastIndex < messages.value.length && 
             messages.value[lastIndex].role === 'assistant') {
-          messages.value[lastIndex].content += '\n\n[读取响应时出错，请重试]';
+
           messages.value[lastIndex].streaming = false;
         }
         break;
@@ -621,9 +629,14 @@ onMounted(() => {
   loadChatTool(); // 默认加载聊天工具
   loadChatHistory(); // 加载历史记录
   
-  // 如果没有当前对话，创建新对话
-  if (!currentChatId.value) {
+  // 如果没有历史记录，或者没有当前对话，才创建新对话
+  if (chatHistory.value.length === 0) {
     createNewChat();
+  } else {
+    // 如果有历史记录，加载最近的一个对话
+    currentChatId.value = chatHistory.value[0].id;
+    messages.value = [...chatHistory.value[0].messages];
+    selectedModel.value = chatHistory.value[0].model || 'DeepSeek-R1';
   }
   
   // 添加滚动事件监听
@@ -649,6 +662,221 @@ onMounted(() => {
   window.addEventListener('resize', handleResize);
   handleResize(); // 初始调用一次
 });
+
+// 处理消息编辑
+const handleEditMessage = async ({ index, content }) => {
+  // 如果正在加载或流式传输中，不允许编辑
+  if (loading.value || messages.value.some(m => m.streaming)) {
+    return
+  }
+
+  const originalMessage = messages.value[index]
+  if (!originalMessage || originalMessage.role !== 'user') {
+    return
+  }
+
+  // 更新消息内容
+  messages.value[index].content = content
+
+  // 删除这条消息之后的所有消息
+  messages.value = messages.value.slice(0, index + 1)
+
+  // 重新发送消息以获取新的回复
+  loading.value = true
+  waitingForResponse.value = true
+  currentAssistantMessage.value = ''
+  shouldAutoScroll.value = true
+  await scrollToBottom(true)
+
+  try {
+    // 关闭可能存在的之前的连接
+    closeEventSource()
+
+    // 添加一个临时的助手消息来显示流式响应
+    messages.value.push({
+      role: 'assistant',
+      content: '',
+      streaming: true
+    })
+
+    // 使用fetch API请求流式响应
+    const response = await fetch('/api/v1/tools/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: selectedModel.value,
+        prompt: content,
+        max_tokens: 4096,
+        temperature: 0.7,
+        stream: true,
+        feature: currentFeature.value.id
+      })
+    })
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+
+    // 创建一个Reader来读取流数据
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+    
+    // 获取最后一条消息的索引用于更新
+    const lastIndex = messages.value.length - 1
+    
+    // 读取流数据并实时更新UI
+    while (true) {
+      try {
+        const { done, value } = await reader.read()
+        if (done) {
+          // 标记消息流已结束
+          if (lastIndex >= 0 && messages.value[lastIndex].role === 'assistant') {
+            messages.value[lastIndex].streaming = false
+          }
+          break
+        }
+        
+        // 解码二进制数据
+        const chunk = decoder.decode(value, { stream: true })
+        buffer += chunk
+        
+        // 处理buffer中的SSE数据
+        const lines = buffer.split('\n\n')
+        
+        // 创建一个新的buffer用于存储未处理完的行
+        let newBuffer = ''
+        
+        // 逐行处理
+        for (let i = 0; i < lines.length - 1; i++) {
+          const line = lines[i].trim()
+          
+          if (line.startsWith('data: ')) {
+            try {
+              // 提取data:后面的内容
+              const dataContent = line.substring(6).trim()
+              
+              // 跳过[DONE]标记
+              if (dataContent === '[DONE]') continue
+              
+              // 尝试解析JSON
+              if (dataContent.startsWith('{')) {
+                try {
+                  const jsonData = JSON.parse(dataContent)
+                  
+                  // 处理DeepSeek或Azure风格的响应
+                  if (jsonData.choices && 
+                      Array.isArray(jsonData.choices) &&
+                      jsonData.choices.length > 0 && 
+                      jsonData.choices[0].delta && 
+                      typeof jsonData.choices[0].delta.content === 'string') {
+                    const content = jsonData.choices[0].delta.content
+                    if (content !== null) {
+                      // 将内容添加到当前助手消息
+                      if (lastIndex >= 0 && 
+                          lastIndex < messages.value.length && 
+                          messages.value[lastIndex].role === 'assistant') {
+                        messages.value[lastIndex].content += content
+                      }
+                    }
+                  }
+                } catch (jsonError) {
+                  console.error('解析JSON出错:', jsonError, dataContent)
+                  // 如果JSON解析失败但有内容，直接添加原始内容
+                  if (dataContent && dataContent !== '[DONE]' && 
+                      lastIndex >= 0 && 
+                      lastIndex < messages.value.length && 
+                      messages.value[lastIndex].role === 'assistant') {
+                    messages.value[lastIndex].content += dataContent
+                  }
+                }
+              } else {
+                // 非JSON格式直接添加内容
+                if (dataContent && dataContent !== '[DONE]' && 
+                    lastIndex >= 0 && 
+                    lastIndex < messages.value.length && 
+                    messages.value[lastIndex].role === 'assistant') {
+                  messages.value[lastIndex].content += dataContent
+                }
+              }
+            } catch (e) {
+              console.error('处理SSE数据时出错:', e, line)
+            }
+          }
+        }
+        
+        // 保留最后一行（可能不完整）
+        newBuffer = lines[lines.length - 1]
+        buffer = newBuffer
+        
+        // 只在启用自动滚动时滚动到底部
+        if (shouldAutoScroll.value) {
+          await scrollToBottom()
+        }
+      } catch (streamError) {
+        // 更新最后一条消息以显示错误
+        if (lastIndex >= 0 && 
+            lastIndex < messages.value.length && 
+            messages.value[lastIndex].role === 'assistant') {
+
+          messages.value[lastIndex].streaming = false
+        }
+        break
+      }
+    }
+
+    loading.value = false
+    waitingForResponse.value = false
+    if (shouldAutoScroll.value) {
+      await scrollToBottom()
+    }
+
+    // 保存对话
+    saveCurrentChat()
+  } catch (error) {
+    console.error('编辑消息请求错误:', error)
+
+    // 更新最后一条消息为错误信息
+    const lastIndex = messages.value.length - 1
+    if (lastIndex >= 0 && messages.value[lastIndex].role === 'assistant') {
+      messages.value[lastIndex].content = `
+抱歉，发生了错误，请稍后重试。
+
+错误详情: ${error.message || '未知错误'}
+      `.trim()
+      messages.value[lastIndex].streaming = false
+    }
+
+    // 重置状态
+    loading.value = false
+    waitingForResponse.value = false
+    if (shouldAutoScroll.value) {
+      await scrollToBottom()
+    }
+  }
+}
+
+// 添加停止生成的方法
+const stopGeneration = () => {
+  if (abortController.value) {
+    abortController.value.abort()
+    abortController.value = null
+  }
+  loading.value = false
+  waitingForResponse.value = false
+  
+  // 更新最后一条消息的状态
+  const lastIndex = messages.value.length - 1
+  if (lastIndex >= 0 && messages.value[lastIndex].role === 'assistant') {
+    messages.value[lastIndex].streaming = false
+    messages.value[lastIndex].content += '\n\n[已停止生成]'
+  }
+  
+  // 保存当前对话
+  saveCurrentChat()
+}
 </script>
 
 <style>

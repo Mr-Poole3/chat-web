@@ -21,7 +21,7 @@
           class="tool-item"
           :class="{ active: currentFeature === feature.id }"
         >
-          <i :class="feature.icon"></i>
+          <img :src="feature.imageUrl" :alt="feature.title">
           <span>{{ feature.title }}</span>
         </div>
 
@@ -61,7 +61,7 @@
             @click="navigateToFeature(feature)"
           >
             <div class="feature-icon">
-              <i :class="feature.icon"></i>
+              <img :src="feature.imageUrl" :alt="feature.title">
             </div>
             <h3>{{ feature.title }}</h3>
             <p>{{ feature.description }}</p>
@@ -95,27 +95,39 @@ const sidebarVisible = ref(false)
 const features = [
   {
     id: 'chat',
-    icon: 'fas fa-robot',
-    title: 'AI 聊天',
+    imageUrl: 'https://img.icons8.com/?size=100&id=37410&format=png&color=FFFFFF',
+    title: '天汇AI',
     description: '与智能 AI 助手进行自然对话，获取帮助和建议。'
   },
   {
-    id: 'pdf',
-    icon: 'fas fa-file-pdf',
-    title: 'PDF 转换',
+    id: 'pdf-to-word',
+    imageUrl: 'https://img.icons8.com/?size=100&id=47812&format=png&color=FFFFFF',
+    title: 'PDF 转换器',
     description: '将 PDF 文件转换为其他格式，支持多种文档类型。'
   },
   {
-    id: 'paper',
-    icon: 'fas fa-pen-fancy',
-    title: '论文写作',
-    description: '智能辅助论文写作，提供写作建议和格式规范。'
+    id: 'essay',
+    imageUrl: 'https://img.icons8.com/?size=100&id=42763&format=png&color=FFFFFF',
+    title: '论文辅助阅读',
+    description: '智能辅助论文阅读和分析，提供深度见解。'
+  },
+  {
+    id: 'ppt',
+    imageUrl: 'https://img.icons8.com/?size=100&id=saSupsgVcmJe&format=png&color=FFFFFF',
+    title: 'Open Manus',
+    description: '智能 PPT 生成和编辑工具。'
   },
   {
     id: 'resume',
-    icon: 'fas fa-file-alt',
-    title: '简历生成',
-    description: '一键生成专业简历。'
+    imageUrl: 'https://img.icons8.com/?size=100&id=23877&format=png&color=FFFFFF',
+    title: '简历生成器',
+    description: '一键生成专业简历，智能排版和内容建议。'
+  },
+  {
+    id: 'flowchart',
+    imageUrl: 'https://img.icons8.com/?size=100&id=1763&format=png&color=FFFFFF',
+    title: '流程图生成器',
+    description: '快速创建和编辑专业流程图。'
   }
 ]
 
@@ -219,9 +231,16 @@ onUnmounted(() => {
   color: #6366f1;
 }
 
+.tool-item img {
+  width: 24px;
+  height: 24px;
+  margin-right: 10px;
+}
+
 .tool-item span {
   font-size: 16px;
-  font-weight: 500;
+  font-weight: bold;
+  color: #fff;
 }
 
 .tool-item:hover {
@@ -359,9 +378,10 @@ onUnmounted(() => {
   transform: scale(1.1) rotate(5deg);
 }
 
-.feature-icon i {
-  font-size: 28px;
-  color: white;
+.feature-icon img {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
 }
 
 .feature-card h3 {

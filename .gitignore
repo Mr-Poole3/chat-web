@@ -1,4 +1,7 @@
 .venv/
 .idea/
 .chat_vue/node_modules/
+.chat_vue/dist/
+.chat_vue/.vscode/
 .env
+

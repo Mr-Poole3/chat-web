@@ -5,3 +5,4 @@ pm2 stop <name>      # 停止特定名称的进程
 pm2 start pnpm -- start
 
 nohup python3 main.py > main.log 2>&1
+sudo lsof -i :8000

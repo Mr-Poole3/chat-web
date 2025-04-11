@@ -4,7 +4,7 @@
       <h2 class="welcome-title">欢迎使用 天汇AI</h2>
       <DotLottieVue
         ref="lottieAnimation"
-        style="height: 300px; width: 300px"
+        class="welcome-lottie"
         :autoplay="showAnimation"
         :loop="false"
         src="https://lottie.host/075353b3-e4c2-4fa8-91ea-7f32563e1e3b/UQ3swQC3pC.lottie"
@@ -23,7 +23,7 @@
           <template v-else>
             <DotLottieVue
               :ref="el => { if (message.streaming) botAnimation = el }"
-              style="height: 72px; width: 72px"
+              class="bot-lottie-animation"
               :autoplay="message.streaming"
               :loop="message.streaming"
               :frame="message.streaming ? undefined : 208"
@@ -352,7 +352,7 @@ const renderedContent = (content) => {
         processedContent += `<div class="thinking-content">
             <details>
                 <summary>思考过程</summary>
-                <div><pre>${thoughtProcess}</pre></div> 
+                <div class="thinking-process-content">${thoughtProcess}</div> 
             </details>
         </div>`;
       }
@@ -648,7 +648,7 @@ onUnmounted(() => {
   border: 1px solid rgba(99, 102, 241, 0.2);
   border-radius: 6px;
   overflow: hidden;
-  background-color: rgba(30, 33, 48, 0.6);
+  background-color: transparent; /* 修改为透明背景 */
 }
 
 .thinking-content summary {
@@ -678,10 +678,24 @@ onUnmounted(() => {
   margin: 0;
   padding: 12px;
   overflow: auto;
-  background-color: rgba(0, 0, 0, 0.1);
+  background-color: transparent; /* 修改为透明背景 */
   color: #e0e0ff; /* 确保代码内容为浅色 */
   font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
   font-size: 14px;
+  white-space: pre-wrap; /* 确保长文本能够自动换行 */
+}
+
+/* 新增思考过程内容样式 */
+.thinking-process-content {
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  background-color: transparent;
+  color: #a0a8b7; /* 修改为灰色 */
+  font-family: SFMono-Regular, Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 12px; /* 减小字号 */
+  white-space: pre-wrap; /* 保留换行符 */
+  word-break: break-word; /* 长词自动换行 */
 }
 
 .thinking-content summary:hover {
@@ -1019,12 +1033,18 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(99, 102, 241, 0.5) #1e2130;
+  /* 隐藏滚动条但保留滚动功能 */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
   width: 100%;
   max-width: 1200px;
   margin: 0 auto;
   scroll-behavior: smooth; /* 平滑滚动 */
+}
+
+/* Webkit浏览器隐藏滚动条 */
+.chat-container::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, newer versions of Opera */
 }
 
 /* 修改编辑相关样式 */
@@ -1171,6 +1191,39 @@ onUnmounted(() => {
   .user-message .message-content {
     width: fit-content;
     max-width: 600px;
+  }
+}
+
+/* 欢迎页面动画 */
+.welcome-lottie {
+  height: 300px; 
+  width: 300px;
+  max-width: 100%;
+}
+
+/* 机器人动画 */
+.bot-lottie-animation {
+  height: 52px; 
+  width: 52px;
+}
+
+/* 响应式调整 */
+@media (min-width: 768px) {
+  .bot-lottie-animation {
+    height: 72px;
+    width: 72px;
+  }
+}
+
+@media (max-width: 480px) {
+  .bot-lottie-animation {
+    height: 42px;
+    width: 42px;
+  }
+  
+  .welcome-lottie {
+    height: 200px;
+    width: 200px;
   }
 }
 </style> 

@@ -401,6 +401,7 @@ select option {
   max-width: 100%;
   word-wrap: break-word;
   align-items: flex-start;
+  position: relative;
 }
 
 .message-content {
@@ -410,10 +411,22 @@ select option {
   border-radius: 8px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
   position: relative;
-  max-width: 65%;
-  width: auto;
   overflow-wrap: break-word;
   color: #e0e0ff;
+}
+
+@media (min-width: 768px) {
+  .message-content {
+    max-width: 65%;
+    width: auto;
+  }
+}
+
+@media (max-width: 767px) {
+  .message-content {
+    max-width: calc(100% - 60px);
+    width: calc(100% - 60px);
+  }
 }
 
 .user-message {
@@ -467,6 +480,7 @@ select option {
   position: relative;
   width: auto;
   height: auto;
+  margin-right: 10px;
 }
 
 /* 欢迎页面样式 */
@@ -755,8 +769,26 @@ select option {
   }
   
   .message-content {
-    max-width: calc(100% - 40px);
-    font-size: 14px;
+    max-width: calc(100% - 50px) !important;
+    width: calc(100% - 50px) !important;
+    margin-left: 10px;
+    margin-right: 10px;
+  }
+
+  .user-message .message-content,
+  .bot-message .message-content {
+    max-width: calc(100% - 50px) !important;
+    width: calc(100% - 50px) !important;
+    margin-left: 10px;
+    margin-right: 10px;
+  }
+  
+  .bot-message {
+    padding-left: 0;
+  }
+  
+  .user-message {
+    padding-right: 0;
   }
 
   .avatar {
@@ -772,6 +804,18 @@ select option {
   
   .welcome-title {
     font-size: 24px;
+  }
+  
+  .bot-avatar {
+    margin-right: 0;
+    position: relative;
+    left: 0;
+    top: 0;
+    min-width: 42px;
+  }
+  
+  .bot-message {
+    margin-left: 0;
   }
 }
 
@@ -834,6 +878,17 @@ select option {
   
   .chat-container {
     padding: 15px 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .avatar {
+    width: 32px;
+    height: 32px;
+  }
+  
+  .bot-avatar {
+    min-width: 32px;
   }
 }
 

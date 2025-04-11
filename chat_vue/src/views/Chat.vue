@@ -163,7 +163,7 @@ const shouldAutoScroll = ref(true)
 // 聊天历史记录相关
 const chatHistory = ref([])
 const currentChatId = ref(null)
-const STORAGE_KEY = 'chat_history'
+const STORAGE_KEY = ref('chat_history')
 const MAX_HISTORY = 15 // 最大历史记录数量
 
 // 添加SSE相关的变量
@@ -202,7 +202,9 @@ const closeEventSource = () => {
 
 // 从本地存储加载历史记录
 const loadChatHistory = () => {
-  const savedHistory = localStorage.getItem(STORAGE_KEY)
+  // 使用用户名作为存储键的一部分，保证每个用户有独立的历史记录
+  STORAGE_KEY.value = `chat_history_${username.value || 'guest'}`
+  const savedHistory = localStorage.getItem(STORAGE_KEY.value)
   if (savedHistory) {
     chatHistory.value = JSON.parse(savedHistory).slice(0, MAX_HISTORY)
   }
@@ -214,7 +216,7 @@ const saveChatHistory = () => {
   if (chatHistory.value.length > MAX_HISTORY) {
     chatHistory.value = chatHistory.value.slice(0, MAX_HISTORY)
   }
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(chatHistory.value))
+  localStorage.setItem(STORAGE_KEY.value, JSON.stringify(chatHistory.value))
 }
 
 // 创建新对话
@@ -592,6 +594,8 @@ const loadUserInfo = () => {
   .then(response => {
     if (response.data && response.data.username) {
       username.value = response.data.username;
+      // 在获取用户名后重新加载聊天历史
+      loadChatHistory();
     }
   })
   .catch(error => {
@@ -627,17 +631,20 @@ onUnmounted(() => {
 onMounted(() => {
   loadUserInfo();
   loadChatTool(); // 默认加载聊天工具
-  loadChatHistory(); // 加载历史记录
+  // 注意：loadChatHistory 会在 loadUserInfo 成功获取用户名后调用
   
   // 如果没有历史记录，或者没有当前对话，才创建新对话
-  if (chatHistory.value.length === 0) {
-    createNewChat();
-  } else {
-    // 如果有历史记录，加载最近的一个对话
-    currentChatId.value = chatHistory.value[0].id;
-    messages.value = [...chatHistory.value[0].messages];
-    selectedModel.value = chatHistory.value[0].model || 'DeepSeek-R1';
-  }
+  // 这里需要延迟执行，确保 loadChatHistory 已被调用
+  setTimeout(() => {
+    if (chatHistory.value.length === 0) {
+      createNewChat();
+    } else {
+      // 如果有历史记录，加载最近的一个对话
+      currentChatId.value = chatHistory.value[0].id;
+      messages.value = [...chatHistory.value[0].messages];
+      selectedModel.value = chatHistory.value[0].model || 'DeepSeek-R1';
+    }
+  }, 100);
   
   // 添加滚动事件监听
   if (messagesContainer.value?.$el) {
@@ -919,6 +926,7 @@ const stopGeneration = () => {
   overflow: hidden;
   position: relative;
   width: calc(100% - 260px);
+  max-width: calc(100vw - 260px);
 }
 
 /* 移动端适配样式 */
@@ -931,6 +939,7 @@ const stopGeneration = () => {
   .main-content {
     margin-left: 0;
     width: 100%;
+    max-width: 100vw;
   }
   
   .sidebar {
@@ -961,33 +970,27 @@ const stopGeneration = () => {
 
 /* 自定义滚动条样式 */
 .chat-container {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(99, 102, 241, 0.5) #1e2130;
+  /* 隐藏滚动条但保留滚动功能 */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
   padding-left: 12px !important;
+  padding-right: 8px !important;
   position: relative;
   height: calc(100vh - 120px);
-  overflow-y: scroll;
+  overflow-y: auto;
   overflow-x: hidden;
+  width: 100%;
+  box-sizing: border-box;
 }
 
+/* Webkit浏览器隐藏滚动条 */
 .chat-container::-webkit-scrollbar {
-  width: 8px;
-  position: absolute;
-  left: 0;
+  display: none; /* Chrome, Safari, newer versions of Opera */
 }
 
-.chat-container::-webkit-scrollbar-track {
-  background: #1e2130;
-  border-radius: 0;
-  margin: 0;
-  position: absolute;
-  left: 0;
-}
-
-.chat-container::-webkit-scrollbar-thumb {
-  background-color: rgba(99, 102, 241, 0.5);
-  border-radius: 0;
-  position: absolute;
-  left: 0;
+/* 在全局范围内添加滚动条隐藏 */
+::-webkit-scrollbar {
+  width: 0;
+  background: transparent;
 }
 </style>

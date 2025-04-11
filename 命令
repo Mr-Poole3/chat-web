@@ -1,0 +1,7 @@
+pm2 stop all         # 停止所有进程
+pm2 stop <id>        # 停止特定ID的进程
+pm2 stop <name>      # 停止特定名称的进程
+
+pm2 start pnpm -- start
+
+nohup python3 main.py > main.log 2>&1

@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --port 8080",
-    "start": "vite --port 8080",
+    "dev": "vite --port 7863 --host",
+    "start": "vite --port 7863 --host",
     "build": "vite build",
     "preview": "vite preview"
   },

@@ -164,7 +164,6 @@ async def fetch_deepseek_response(
                                 
                                 if content:
                                     response_queue.put(line)
-                                    print(line)
                         
                         except json.JSONDecodeError as e:
                             print(f"JSON解析错误: {e}")

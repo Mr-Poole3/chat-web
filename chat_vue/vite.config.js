@@ -13,14 +13,15 @@ export default defineConfig({
     },
   },
   server: {
-    port: 8080,
+    port: 7863,
+    host: true,
     proxy: {
       '/api/v1': {
-        target: 'http://127.0.0.1:8000',
+        target: 'http://0.0.0.0:8000',
         changeOrigin: true,
       },
       '/ws': {
-        target: 'ws://127.0.0.1:8000',
+        target: 'ws://0.0.0.0:8000',
         ws: true,
       }
     },

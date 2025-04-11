@@ -8,7 +8,7 @@
         @click="$emit('load-chat-tool')"
       >
         <img src="https://img.icons8.com/?size=100&id=37410&format=png&color=FFFFFF" alt="聊天">
-        <span>天汇AI</span>
+        <span>AI Chat</span>
       </div>
       <div 
         class="tool-item" 

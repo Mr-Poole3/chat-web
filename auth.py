@@ -80,6 +80,9 @@ class Token(BaseModel):
 class TokenData(BaseModel):
     username: Optional[str] = None
 
+class ChangePasswordData(BaseModel):
+    current_password: str
+    new_password: str
 
 # 数据库连接函数
 def get_db_connection():
@@ -236,6 +239,33 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     except Exception as e:
         print(f"Login error: {str(e)}")
         raise
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.post("/api/v1/auth/change-password", response_model=dict)
+async def change_password(change_password_data: ChangePasswordData, user: dict = Depends(get_current_user)):
+    # 验证当前密码
+    if not verify_password(change_password_data.current_password, user['password']):
+        raise HTTPException(status_code=400, detail="当前密码错误")
+
+    # 验证新密码强度
+    if len(change_password_data.new_password) < 8 or not any(c.isupper() for c in change_password_data.new_password) or \
+       not any(c.islower() for c in change_password_data.new_password) or not any(c.isdigit() for c in change_password_data.new_password):
+        raise HTTPException(
+            status_code=400,
+            detail="新密码必须至少包含8个字符，并包含大写字母、小写字母和数字"
+        )
+
+    # 更新密码
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        hashed_password = get_password_hash(change_password_data.new_password)
+        cursor.execute("UPDATE users SET password = %s WHERE username = %s", (hashed_password, user['username']))
+        conn.commit()
+        return {"message": "密码修改成功"}
     finally:
         cursor.close()
         conn.close()

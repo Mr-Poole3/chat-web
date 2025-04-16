@@ -105,7 +105,7 @@ const tools = [
   {
     id: 'ppt',
     title: 'Open Manus',
-    description: '开发中，敬请期待',
+    description: '智能PPT生成和编辑工具',
     icon: 'fas fa-file-powerpoint'
   },
   {
@@ -535,6 +535,11 @@ const handleLogout = () => {
 
 // 工具加载功能
 const loadTool = (toolId) => {
+  if (toolId === 'pdf-to-word') {
+    alert('开发中，敬请期待！');
+    return;
+  }
+
   // 隐藏AI聊天页面
   document.getElementById('ai-chat-page').style.display = 'none';
   
@@ -916,6 +921,29 @@ const stopGeneration = () => {
   top: 0;
   left: 0;
   z-index: 1000;
+}
+
+/* 工具项样式 */
+.tool-item {
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.tool-item:hover {
+  background-color: rgba(99, 102, 241, 0.1);
+}
+
+.tool-item.active {
+  background-color: rgba(99, 102, 241, 0.2);
+  border-left: 4px solid #6366f1;
+}
+
+.tool-item img {
+  filter: brightness(1);
+}
+
+.tool-item span {
+  color: #ffffff;
 }
 
 /* 主内容区域样式 */

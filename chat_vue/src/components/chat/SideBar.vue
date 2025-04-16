@@ -12,7 +12,7 @@
       </div>
       <div 
         class="tool-item" 
-        :class="{ active: activeToolId === 'pdf-to-word' }" 
+        :class="{ active: activeToolId === 'pdf-to-word', 'disabled-tool': true }"
         @click="$emit('load-tool', 'pdf-to-word')"
       >
         <img src="https://img.icons8.com/?size=100&id=47812&format=png&color=FFFFFF" alt="PDF to Word">
@@ -28,7 +28,7 @@
       </div>
       <div 
         class="tool-item" 
-        :class="{ active: activeToolId === 'ppt' }" 
+        :class="{ active: activeToolId === 'ppt' }"
         @click="$emit('load-tool', 'ppt')"
       >
         <img src="https://img.icons8.com/?size=100&id=saSupsgVcmJe&format=png&color=FFFFFF" alt="PPT"/>
@@ -152,12 +152,13 @@ const navigateTo = (path) => {
   width: 24px;
   height: 24px;
   margin-right: 10px;
+  filter: brightness(1);
 }
 
 .tool-item span {
   font-size: 16px;
   font-weight: bold;
-  color: #fff;
+  color: #ffffff;
 }
 
 .sidebar-content {
@@ -183,4 +184,19 @@ const navigateTo = (path) => {
     box-shadow: 2px 0 15px rgba(0, 0, 0, 0.3);
   }
 }
+
+/* --- START: Disabled Tool Styles --- */
+.tool-item.disabled-tool img {
+  filter: grayscale(100%);
+  opacity: 0.6;
+}
+
+.tool-item.disabled-tool span {
+  opacity: 0.7;
+}
+
+.tool-item.disabled-tool {
+  cursor: not-allowed;
+}
+/* --- END: Disabled Tool Styles --- */
 </style> 

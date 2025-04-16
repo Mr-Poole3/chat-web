@@ -19,7 +19,7 @@
           :key="feature.id"
           @click="navigateToFeature(feature)"
           class="tool-item"
-          :class="{ active: currentFeature === feature.id }"
+          :class="{ active: currentFeature === feature.id, 'disabled-tool': feature.id === 'pdf-to-word' }"
         >
           <img :src="feature.imageUrl" :alt="feature.title">
           <span>{{ feature.title }}</span>
@@ -59,6 +59,7 @@
             :key="feature.id"
             class="feature-card"
             @click="navigateToFeature(feature)"
+            :class="{ 'disabled-feature': feature.id === 'pdf-to-word' }"
           >
             <div class="feature-icon">
               <img :src="feature.imageUrl" :alt="feature.title">
@@ -115,7 +116,7 @@ const features = [
     id: 'ppt',
     imageUrl: 'https://img.icons8.com/?size=100&id=saSupsgVcmJe&format=png&color=FFFFFF',
     title: 'Open Manus',
-    description: '智能 PPT 生成和编辑工具。'
+    description: '智能PPT生成和编辑工具。'
   },
   {
     id: 'resume',
@@ -132,6 +133,10 @@ const features = [
 ]
 
 const navigateToFeature = (feature) => {
+  if (feature.id === 'pdf-to-word') {
+    return;
+  }
+
   if (!userStore.isAuthenticated) {
     router.push('/login')
     return
@@ -596,5 +601,55 @@ onUnmounted(() => {
   .welcome-section {
     padding: 30px;
   }
+}
+
+/* 禁用功能卡片样式 */
+.feature-card.disabled-feature {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.feature-card.disabled-feature .feature-icon img {
+  filter: grayscale(100%);
+  opacity: 0.6;
+}
+
+.feature-card.disabled-feature h3,
+.feature-card.disabled-feature p {
+  opacity: 0.7;
+}
+
+.feature-card.disabled-feature:hover {
+  transform: none;
+  box-shadow: none;
+  border-color: rgba(99, 102, 241, 0.2);
+}
+
+.feature-card.disabled-feature:hover::after {
+  display: none;
+}
+
+/* 禁用工具样式 */
+.tool-item.disabled-tool {
+  cursor: not-allowed;
+}
+
+.tool-item.disabled-tool img {
+  filter: grayscale(100%);
+  opacity: 0.6;
+}
+
+.tool-item.disabled-tool span {
+  opacity: 0.7;
+  color: #a5b4fc;
+}
+
+.tool-item.disabled-tool:hover {
+  background-color: transparent;
+  transform: none;
+}
+
+.tool-item.disabled-tool:hover::after {
+  display: none;
 }
 </style>

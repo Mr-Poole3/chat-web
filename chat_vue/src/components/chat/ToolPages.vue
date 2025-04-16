@@ -15,6 +15,9 @@
       <!-- 流程图生成器页面 -->
       <iframe v-else-if="tool.id === 'flowchart'" src="http://139.224.203.197:7865/" class="tool-iframe"></iframe>
       
+      <!-- Open Manus页面 -->
+      <iframe v-else-if="tool.id === 'ppt'" src="http://139.224.203.197:7862/" class="tool-iframe"></iframe>
+      
       <!-- 其他工具页面显示标题和描述 -->
       <template v-else>
         <h2>{{ tool.title }}</h2>

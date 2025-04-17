@@ -5,7 +5,8 @@
       <p class="description">上传文档，智能提取关键信息，支持多种文档格式</p>
     </div>
 
-    <div class="upload-section">
+    <!-- 上传区域，当处理中或已完成时隐藏 -->
+    <div class="upload-section" v-if="!processing && !currentKbId">
       <div class="upload-area" 
            @dragover.prevent 
            @drop.prevent="handleDrop"
@@ -30,7 +31,78 @@
       </div>
     </div>
 
-    <div class="task-status" v-if="taskStatus">
+    <!-- 新增：知识库列表组件，修改条件确保正确显示 -->
+    <div class="kb-list-section" v-if="!processing && (!currentKbId || (currentKbId && !showQueryInput))">
+      <div class="section-header">
+        <h3><i class="fas fa-database"></i> 我的知识库</h3>
+        <button class="refresh-btn" @click="fetchKnowledgeBaseList" :disabled="isLoadingKBs">
+          <i class="fas" :class="isLoadingKBs ? 'fa-spinner fa-spin' : 'fa-sync-alt'"></i>
+        </button>
+      </div>
+      
+      <div class="kb-list" v-if="knowledgeBaseList.length > 0">
+        <div v-for="kb in knowledgeBaseList" :key="kb.kb_id" 
+             class="kb-item"
+             :class="{'kb-selected': kb.kb_id === currentKbId}">
+          <div class="kb-details" @click="selectKnowledgeBase(kb.kb_id)">
+            <div class="kb-icon">
+              <i class="fas fa-book"></i>
+            </div>
+            <div class="kb-info">
+              <div class="kb-name">{{ kb.file_name || '未命名知识库' }}</div>
+              <div class="kb-date">{{ formatDate(kb.create_time) }}</div>
+            </div>
+          </div>
+          <div class="kb-actions">
+            <button class="kb-action-btn query" v-if="kb.kb_id === currentKbId" @click.stop="showQueryInput = true">
+              <i class="fas fa-comment-dots"></i>
+            </button>
+            <button class="kb-action-btn delete" @click.stop="confirmDeleteKB(kb.kb_id)">
+              <i class="fas fa-trash-alt"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+      
+      <div class="kb-empty-state" v-else-if="!isLoadingKBs">
+        <i class="fas fa-database"></i>
+        <p>暂无知识库，请上传文档创建</p>
+      </div>
+      
+      <div class="kb-loading" v-else>
+        <i class="fas fa-spinner fa-spin"></i>
+        <p>加载知识库中...</p>
+      </div>
+    </div>
+
+    <!-- 新增：知识库选择后的提问界面 -->
+    <div class="selected-kb-info" v-if="currentKbId && selectedKB && !showQueryInput">
+      <div class="kb-header">
+        <div class="kb-title">
+          <i class="fas fa-book"></i>
+          <h3>{{ selectedKB.file_name || '未命名知识库' }}</h3>
+        </div>
+        <div class="kb-actions">
+          <button class="kb-back-btn" @click="resetKnowledgeBase">
+            <i class="fas fa-arrow-left"></i> 返回列表
+          </button>
+        </div>
+      </div>
+      <p class="kb-description">您可以向此知识库提问任何问题，AI 将基于文档内容回答。</p>
+    </div>
+
+    <!-- Lottie动画加载区域，只在处理中显示 -->
+    <div class="loading-animation-container" v-if="processing">
+      <DotLottieVue 
+        style="height: 300px; width: 300px" 
+        autoplay 
+        loop 
+        src="https://lottie.host/1ad4e652-5209-4043-bb4b-b45f34842a8e/yLww9M6qdp.lottie" 
+      />
+      <p class="loading-text">{{ processingStage === 'uploading' ? '正在上传文件...' : '正在分析文档...' }}</p>
+    </div>
+
+    <div class="task-status" v-if="taskStatus && !processing">
       <div class="status-indicator" :class="taskStatusClass">
         <i class="fas" :class="taskStatusIcon"></i>
         <span>{{ taskStatus }}</span>
@@ -43,8 +115,15 @@
       </div>
     </div>
 
-    <!-- 用户问题输入区域 -->
+    <!-- 修改提问界面条件，确保可以正确显示 -->
     <div class="query-section" v-if="showQueryInput && currentKbId">
+      <div class="header-with-back">
+        <button class="back-btn" @click="showQueryInput = false">
+          <i class="fas fa-arrow-left"></i> 返回
+        </button>
+        <h3 v-if="selectedKB">{{ selectedKB.file_name || '未命名知识库' }}</h3>
+      </div>
+      
       <div class="input-container">
         <textarea 
           class="query-input" 
@@ -72,27 +151,14 @@
         class="message"
         :class="[message.role]"
       >
-        <div class="message-header">
-          <span class="message-role">
-            <i class="fas" :class="message.role === 'user' ? 'fa-user' : 'fa-robot'"></i>
-            {{ message.role === 'user' ? '您' : '知识助手' }}
-          </span>
-        </div>
         <div class="message-content" v-html="formatMessage(message.content)"></div>
       </div>
     </div>
 
-    <div class="processing-section" v-if="currentFile && !showQueryInput">
+    <div class="action-section" v-if="currentFile && !showQueryInput && !processing">
       <div class="file-info">
         <span class="file-name">{{ currentFile.name }}</span>
         <span class="file-size">({{ formatFileSize(currentFile.size) }})</span>
-      </div>
-      <div class="progress-container" v-if="processing || progress > 0">
-        <div class="progress-bar">
-          <div class="progress" :style="{ width: progress + '%' }"></div>
-          <span class="progress-text">{{ progress }}%</span>
-        </div>
-        <div class="progress-status">{{ progressStatus }}</div>
       </div>
       <div class="action-buttons">
         <button @click="processFile" 
@@ -102,14 +168,10 @@
           <i class="fas fa-spinner fa-spin" v-else></i>
           {{ processing ? '处理中...' : '开始处理' }}
         </button>
-        <button @click="cancelProcess" v-if="processing" class="cancel-btn">
-          <i class="fas fa-stop-circle"></i>
-          取消
-        </button>
       </div>
     </div>
 
-    <div class="empty-state" v-if="!currentFile && !processing && !showQueryInput">
+    <div class="empty-state" v-if="!currentFile && !processing && !showQueryInput && !currentKbId">
       <i class="fas fa-file-alt empty-icon"></i>
       <p>上传文档开始提取知识</p>
     </div>
@@ -117,22 +179,27 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
 import { marked } from 'marked'
+import { DotLottieVue } from '@lottiefiles/dotlottie-vue'
 
 const fileInput = ref(null)
 const isDragging = ref(false)
 const currentFile = ref(null)
 const processing = ref(false)
-const progress = ref(0)
 const results = ref([])
 const taskStatus = ref('')
 const processingStage = ref('')
 const cancelTokenSource = ref(null)
 const currentKbId = ref('')
 
-// 新增：查询相关变量
+// 新增：知识库列表相关变量
+const knowledgeBaseList = ref([])
+const isLoadingKBs = ref(false)
+const selectedKB = ref(null)
+
+// 查询相关变量
 const showQueryInput = ref(false)
 const queryText = ref('')
 const isQuerying = ref(false)
@@ -155,16 +222,188 @@ const taskStatusIcon = computed(() => {
   return 'fa-info-circle'
 })
 
-// 进度状态文本
-const progressStatus = computed(() => {
-  if (processing.value) {
-    if (progress.value < 25) return '正在上传文件...'
-    if (progress.value < 50) return '正在分析文档结构...'
-    if (progress.value < 75) return '提取关键信息...'
-    return '生成知识结果...'
+// 组件加载时获取知识库列表
+onMounted(() => {
+  fetchKnowledgeBaseList()
+  
+  // 检查是否有缓存的知识库ID
+  const cachedKbId = localStorage.getItem('current_kb_id')
+  const userId = getUserId()
+  if (cachedKbId) {
+    // 添加用户ID校验，确保知识库属于当前用户
+    currentKbId.value = cachedKbId
+    fetchKnowledgeBaseDetails(cachedKbId)
   }
-  return progress.value === 100 ? '处理完成' : ''
 })
+
+// 获取当前用户ID
+const getUserId = () => {
+  // 从localStorage获取用户信息
+  const userInfo = localStorage.getItem('userInfo')
+  if (userInfo) {
+    try {
+      const user = JSON.parse(userInfo)
+      return user.id || user.userId || null
+    } catch (e) {
+      console.error('解析用户信息失败:', e)
+    }
+  }
+  
+  // 从token中解析用户ID（如果无法直接获取）
+  const token = localStorage.getItem('token')
+  if (token) {
+    try {
+      // 简单解析JWT token（不验证签名）
+      const base64Url = token.split('.')[1]
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/')
+      const payload = JSON.parse(window.atob(base64))
+      return payload.id || payload.userId || payload.sub || null
+    } catch (e) {
+      console.error('解析token失败:', e)
+    }
+  }
+  
+  return null
+}
+
+// 获取知识库列表
+const fetchKnowledgeBaseList = async () => {
+  isLoadingKBs.value = true
+  try {
+    const token = localStorage.getItem('token')
+    const userId = getUserId()
+    
+    // 添加用户ID参数，确保只获取当前用户的知识库
+    const response = await axios.get(`/knowledge/list${userId ? `?user_id=${userId}` : ''}`, {
+      headers: {
+        'Authorization': token ? `Bearer ${token}` : '',
+        'X-User-ID': userId || '' // 在请求头中也传递用户ID
+      }
+    })
+    
+    if (response.data && response.data.kb_list) {
+      knowledgeBaseList.value = response.data.kb_list
+      console.log('知识库列表获取成功:', knowledgeBaseList.value.length)
+      
+      // 如果存在当前选中的知识库，验证它是否在列表中
+      if (currentKbId.value) {
+        const exists = knowledgeBaseList.value.some(kb => kb.kb_id === currentKbId.value)
+        if (!exists) {
+          // 如果当前知识库不属于该用户，重置选择
+          resetKnowledgeBase()
+          console.warn('当前知识库不属于该用户，已重置选择')
+        }
+      }
+    }
+  } catch (error) {
+    console.error('获取知识库列表出错:', error)
+    showToast('获取知识库列表失败', 'error')
+  } finally {
+    isLoadingKBs.value = false
+  }
+}
+
+// 选择知识库
+const selectKnowledgeBase = (kbId) => {
+  console.log('选择知识库:', kbId)
+  currentKbId.value = kbId
+  localStorage.setItem('current_kb_id', kbId)
+  fetchKnowledgeBaseDetails(kbId)
+  
+  // 选择知识库后重置对话
+  conversation.value = []
+}
+
+// 获取知识库详情
+const fetchKnowledgeBaseDetails = (kbId) => {
+  const kb = knowledgeBaseList.value.find(kb => kb.kb_id === kbId)
+  if (kb) {
+    selectedKB.value = kb
+    taskStatus.value = '知识库已选择，可以开始提问'
+    
+    // 选择知识库后增加延迟自动显示提问输入框
+    setTimeout(() => {
+      showQueryInput.value = true
+    }, 500)
+  } else {
+    // 如果在列表中找不到，重新获取知识库列表
+    fetchKnowledgeBaseList().then(() => {
+      const kb = knowledgeBaseList.value.find(kb => kb.kb_id === kbId)
+      if (kb) {
+        selectedKB.value = kb
+        taskStatus.value = '知识库已选择，可以开始提问'
+        setTimeout(() => {
+          showQueryInput.value = true
+        }, 500)
+      } else {
+        // 如果仍找不到，可能是知识库已被删除
+        resetKnowledgeBase()
+        taskStatus.value = '知识库不存在，请选择其他知识库'
+      }
+    })
+  }
+}
+
+// 重置知识库选择
+const resetKnowledgeBase = () => {
+  currentKbId.value = ''
+  selectedKB.value = null
+  conversation.value = []
+  showQueryInput.value = false
+  localStorage.removeItem('current_kb_id')
+}
+
+// 确认删除知识库
+const confirmDeleteKB = (kbId) => {
+  if (confirm('确定要删除此知识库吗？删除后无法恢复。')) {
+    deleteKnowledgeBase(kbId)
+  }
+}
+
+// 删除知识库
+const deleteKnowledgeBase = async (kbId) => {
+  try {
+    const token = localStorage.getItem('token')
+    const userId = getUserId()
+    
+    await axios.delete(`/knowledge/delete/${kbId}`, {
+      headers: {
+        'Authorization': token ? `Bearer ${token}` : '',
+        'X-User-ID': userId || '' // 添加用户ID确保权限校验
+      },
+      params: {
+        user_id: userId // 在参数中也传递用户ID
+      }
+    })
+    
+    // 从列表中移除被删除的知识库
+    knowledgeBaseList.value = knowledgeBaseList.value.filter(kb => kb.kb_id !== kbId)
+    
+    // 如果删除的是当前选中的知识库，重置选择
+    if (currentKbId.value === kbId) {
+      resetKnowledgeBase()
+    }
+    
+    showToast('知识库已成功删除', 'success')
+  } catch (error) {
+    console.error('删除知识库出错:', error)
+    showToast('删除知识库失败', 'error')
+  }
+}
+
+// 格式化日期
+const formatDate = (timestamp) => {
+  if (!timestamp) return '未知时间'
+  
+  const date = new Date(timestamp * 1000)
+  return date.toLocaleString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit'
+  })
+}
 
 const triggerFileInput = () => {
   if (!processing.value) {
@@ -195,7 +434,6 @@ const handleFile = (file) => {
     return
   }
   currentFile.value = file
-  progress.value = 0
   taskStatus.value = '文件已选择，待处理'
 }
 
@@ -222,12 +460,17 @@ const processFile = async () => {
   if (!currentFile.value || processing.value) return
 
   processing.value = true
-  progress.value = 0
   processingStage.value = 'uploading'
   taskStatus.value = '文档处理中...'
 
   const formData = new FormData()
   formData.append('file', currentFile.value)
+  
+  // 添加用户ID到表单数据
+  const userId = getUserId()
+  if (userId) {
+    formData.append('user_id', userId)
+  }
 
   // 创建取消令牌
   cancelTokenSource.value = axios.CancelToken.source()
@@ -239,17 +482,13 @@ const processFile = async () => {
     const response = await axios.post('/knowledge/process', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
-        'Authorization': token ? `Bearer ${token}` : ''
+        'Authorization': token ? `Bearer ${token}` : '',
+        'X-User-ID': userId || '' // 添加用户ID到请求头
       },
       cancelToken: cancelTokenSource.value.token,
       onUploadProgress: (progressEvent) => {
-        const percentCompleted = Math.round((progressEvent.loaded * 40) / progressEvent.total)
-        progress.value = percentCompleted
-        
-        if (percentCompleted >= 40) {
+        if (progressEvent.loaded >= progressEvent.total) {
           processingStage.value = 'analyzing'
-          // 模拟处理进度
-          simulateProcessing()
         }
       }
     })
@@ -258,8 +497,9 @@ const processFile = async () => {
       currentKbId.value = response.data.kb_id
       localStorage.setItem('current_kb_id', response.data.kb_id)
       taskStatus.value = '处理成功，可以开始提问'
-      // 隐藏结果，只提供提问按钮
-      results.value = []
+      showQueryInput.value = true  // 自动显示提问输入框
+      // 处理成功后刷新知识库列表
+      fetchKnowledgeBaseList()
     } else {
       taskStatus.value = '处理完成，但未生成知识库ID'
     }
@@ -276,36 +516,6 @@ const processFile = async () => {
   } finally {
     processing.value = false
     cancelTokenSource.value = null
-  }
-}
-
-const simulateProcessing = () => {
-  // 模拟文档处理进度
-  const interval = setInterval(() => {
-    if (processing.value) {
-      if (progress.value < 95) {
-        progress.value += 3
-        
-        if (progress.value >= 60 && processingStage.value === 'analyzing') {
-          processingStage.value = 'extracting'
-        }
-        
-        if (progress.value >= 80 && processingStage.value === 'extracting') {
-          processingStage.value = 'finalizing'
-        }
-      }
-    } else {
-      clearInterval(interval)
-    }
-  }, 300)
-}
-
-const cancelProcess = () => {
-  if (cancelTokenSource.value) {
-    cancelTokenSource.value.cancel()
-    progress.value = 0
-    processing.value = false
-    taskStatus.value = '处理已取消'
   }
 }
 
@@ -356,22 +566,27 @@ const sendQuery = async () => {
   queryController.value = new AbortController()
   
   try {
-    // 获取token
+    // 获取token和用户ID
     const token = localStorage.getItem('token')
+    const userId = getUserId()
     
     // 准备请求数据
     const requestData = {
       query: query,
       stream: true,
-      kb_id: currentKbId.value
+      kb_id: currentKbId.value,
+      user_id: userId // 添加用户ID确保查询权限
     }
+    
+    console.log('发送查询请求，知识库ID:', currentKbId.value)
     
     // 发送请求
     const response = await fetch('/api/v1/knowledge/query', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': token ? `Bearer ${token}` : ''
+        'Authorization': token ? `Bearer ${token}` : '',
+        'X-User-ID': userId || '' // 在请求头中也传递用户ID
       },
       body: JSON.stringify(requestData),
       signal: queryController.value.signal
@@ -540,6 +755,22 @@ const sendQuery = async () => {
   margin-top: 10px;
 }
 
+/* 加载动画容器 */
+.loading-animation-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: 20px 0;
+}
+
+.loading-text {
+  color: #a5b4fc;
+  font-size: 1.2rem;
+  margin-top: 10px;
+  text-align: center;
+}
+
 .task-status {
   padding: 10px 15px;
   border-radius: 8px;
@@ -579,7 +810,7 @@ const sendQuery = async () => {
   color: #6366f1;
 }
 
-.processing-section {
+.action-section {
   margin: 20px 0;
   padding: 20px;
   background-color: rgba(30, 33, 48, 0.7);
@@ -607,75 +838,6 @@ const sendQuery = async () => {
 
 .file-size {
   color: #a5b4fc;
-}
-
-.progress-container {
-  margin: 15px 0;
-}
-
-.progress-bar {
-  height: 20px;
-  background-color: rgba(22, 25, 35, 0.8);
-  border-radius: 10px;
-  overflow: hidden;
-  position: relative;
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
-}
-
-.progress {
-  height: 100%;
-  background: linear-gradient(90deg, #4c4ed9 0%, #6366f1 50%, #818cf8 100%);
-  transition: width 0.5s ease;
-  position: relative;
-  overflow: hidden;
-}
-
-.progress::after {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  right: 0;
-  background-image: linear-gradient(
-    -45deg,
-    rgba(255, 255, 255, 0.1) 25%,
-    transparent 25%,
-    transparent 50%,
-    rgba(255, 255, 255, 0.1) 50%,
-    rgba(255, 255, 255, 0.1) 75%,
-    transparent 75%,
-    transparent
-  );
-  background-size: 50px 50px;
-  animation: progressStripes 2s linear infinite;
-}
-
-@keyframes progressStripes {
-  0% {
-    background-position: 0 0;
-  }
-  100% {
-    background-position: 50px 0;
-  }
-}
-
-.progress-text {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  color: #fff;
-  font-size: 0.8em;
-  font-weight: bold;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-}
-
-.progress-status {
-  color: #a5b4fc;
-  font-size: 0.9em;
-  text-align: center;
-  margin-top: 8px;
 }
 
 .action-buttons {
@@ -834,7 +996,7 @@ const sendQuery = async () => {
   opacity: 0.7;
 }
 
-/* 对话样式 */
+/* 对话样式 - 更新为Chrome风格 */
 .conversation-container {
   margin-top: 20px;
   display: flex;
@@ -861,9 +1023,12 @@ const sendQuery = async () => {
 }
 
 .message {
-  padding: 15px;
-  border-radius: 12px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  max-width: 80%;
   animation: fadeIn 0.3s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  margin-bottom: 8px;
 }
 
 @keyframes fadeIn {
@@ -873,39 +1038,22 @@ const sendQuery = async () => {
 
 .message.user {
   background-color: rgba(99, 102, 241, 0.15);
-  border-left: 3px solid #6366f1;
   align-self: flex-end;
+  border-radius: 18px 18px 0 18px;
+  color: #e0e0ff;
 }
 
 .message.assistant {
   background-color: rgba(30, 33, 48, 0.7);
-  border-left: 3px solid #10b981;
   align-self: flex-start;
-}
-
-.message-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-  font-size: 0.9rem;
-}
-
-.message-role {
-  font-weight: bold;
-  color: #a5b4fc;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.message.assistant .message-role {
-  color: #10b981;
+  border-radius: 18px 18px 18px 0;
+  color: #e0e0ff;
 }
 
 .message-content {
   color: #e0e0ff;
-  line-height: 1.6;
+  line-height: 1.5;
+  font-size: 0.95rem;
   white-space: pre-wrap;
   overflow-wrap: break-word;
   word-break: break-word;
@@ -955,7 +1103,7 @@ const sendQuery = async () => {
     font-size: 36px;
   }
   
-  .processing-section,
+  .action-section,
   .query-section {
     padding: 15px;
   }
@@ -974,14 +1122,295 @@ const sendQuery = async () => {
     justify-content: center;
   }
   
-  .process-btn, .cancel-btn, .query-btn {
+  .process-btn, .query-btn {
     min-width: 120px;
     padding: 8px 12px;
     font-size: 0.9rem;
   }
   
   .message {
-    padding: 12px;
+    padding: 10px;
+    max-width: 90%;
   }
+  
+  .loading-animation-container DotLottieVue {
+    height: 200px !important;
+    width: 200px !important;
+  }
+}
+
+/* 新增：知识库列表样式 */
+.kb-list-section {
+  margin: 30px 0;
+  padding: 20px;
+  background-color: rgba(30, 33, 48, 0.7);
+  border-radius: 12px;
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+  padding-bottom: 10px;
+}
+
+.section-header h3 {
+  font-size: 1.3rem;
+  color: #a5b4fc;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.refresh-btn {
+  background: none;
+  border: none;
+  color: #6366f1;
+  cursor: pointer;
+  padding: 5px;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+}
+
+.refresh-btn:hover {
+  background-color: rgba(99, 102, 241, 0.1);
+  transform: rotate(30deg);
+}
+
+.kb-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 300px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: #6366f1 #1e2130;
+}
+
+.kb-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.kb-list::-webkit-scrollbar-track {
+  background: #1e2130;
+}
+
+.kb-list::-webkit-scrollbar-thumb {
+  background-color: #6366f1;
+  border-radius: 2px;
+}
+
+.kb-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 15px;
+  background-color: rgba(22, 25, 35, 0.7);
+  border-radius: 8px;
+  border-left: 3px solid #6366f1;
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.kb-item:hover {
+  background-color: rgba(30, 33, 48, 0.9);
+  transform: translateX(3px);
+}
+
+.kb-details {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+}
+
+.kb-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background-color: rgba(99, 102, 241, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6366f1;
+  font-size: 1.2rem;
+}
+
+.kb-info {
+  flex: 1;
+}
+
+.kb-name {
+  font-weight: 500;
+  color: #e0e0ff;
+  margin-bottom: 5px;
+  word-break: break-word;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 1; /* For modern browsers */
+  line-clamp: 1; /* Standard property */
+  -webkit-box-orient: vertical;
+}
+
+.kb-date {
+  font-size: 0.8rem;
+  color: #a5b4fc;
+}
+
+.kb-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.kb-action-btn {
+  background: none;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.kb-action-btn.delete {
+  color: #ef4444;
+}
+
+.kb-action-btn.delete:hover {
+  background-color: rgba(239, 68, 68, 0.1);
+}
+
+.kb-empty-state, .kb-loading {
+  padding: 30px 20px;
+  text-align: center;
+  color: #a5b4fc;
+}
+
+.kb-empty-state i, .kb-loading i {
+  font-size: 2rem;
+  margin-bottom: 10px;
+  display: block;
+}
+
+.kb-loading i {
+  color: #6366f1;
+}
+
+/* 选中的知识库信息样式 */
+.selected-kb-info {
+  margin: 20px 0;
+  padding: 20px;
+  background-color: rgba(30, 33, 48, 0.7);
+  border-radius: 12px;
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.kb-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.kb-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.kb-title i {
+  color: #6366f1;
+  font-size: 1.2rem;
+}
+
+.kb-title h3 {
+  color: #e0e0ff;
+  font-size: 1.2rem;
+  font-weight: 500;
+  margin: 0;
+}
+
+.kb-description {
+  color: #a5b4fc;
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.kb-back-btn {
+  background-color: rgba(99, 102, 241, 0.1);
+  color: #6366f1;
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  transition: all 0.3s ease;
+}
+
+.kb-back-btn:hover {
+  background-color: rgba(99, 102, 241, 0.2);
+}
+
+.kb-item.kb-selected {
+  background-color: rgba(99, 102, 241, 0.2);
+  border-left: 3px solid #10b981;
+}
+
+.kb-action-btn.query {
+  color: #10b981;
+}
+
+.kb-action-btn.query:hover {
+  background-color: rgba(16, 185, 129, 0.1);
+}
+
+/* 返回按钮样式 */
+.header-with-back {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  margin-bottom: 15px;
+}
+
+.back-btn {
+  background-color: rgba(99, 102, 241, 0.1);
+  color: #6366f1;
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.9rem;
+  transition: all 0.3s ease;
+}
+
+.back-btn:hover {
+  background-color: rgba(99, 102, 241, 0.2);
+}
+
+.header-with-back h3 {
+  color: #e0e0ff;
+  font-size: 1.2rem;
+  font-weight: 500;
+  margin: 0;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style> 

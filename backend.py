@@ -23,8 +23,12 @@ from pathlib import Path
 from knowledge_base.core.grag import query_async
 import numpy as np
 import time
+import re
+import base64
+import sys
 
 from base import app
+from lib.redis_kv import RedisKVStore
 
 # 加载环境变量
 load_dotenv()
@@ -762,6 +766,9 @@ async def process_document(file: UploadFile = File(...)):
             content = await file.read()
             buffer.write(content)
         
+        # 记录文件名，用于后续保存元数据
+        original_filename = file.filename
+        
         # 初始化知识库管理器
         log_id = str(uuid.uuid4())
         manager = GraphManager(kb_id=kb_id, log_id=log_id)
@@ -778,6 +785,26 @@ async def process_document(file: UploadFile = File(...)):
         
         if not rag:
             return {"results": [{"type": "处理结果", "confidence": 60, "text": "文档处理失败，请检查文档格式是否支持。"}], "kb_id": kb_id}
+        
+        # 保存元数据
+        try:
+            # 确保知识库目录存在
+            kb_path = Path(os.path.abspath("cache_graph")) / kb_id
+            if os.path.exists(kb_path):
+                # 创建元数据文件
+                metadata = {
+                    "file_name": original_filename,
+                    "upload_time": time.time(),
+                    "token_count": token_count
+                }
+                meta_file = kb_path / "metadata.json"
+                with open(meta_file, "w", encoding="utf-8") as f:
+                    json.dump(metadata, f, ensure_ascii=False, indent=2)
+                print(f"保存知识库元数据成功: {kb_id}")
+            else:
+                print(f"知识库目录不存在，无法保存元数据: {kb_id}")
+        except Exception as e:
+            print(f"保存元数据时出错: {str(e)}")
         
         # 提取关键信息
         results = []
@@ -885,6 +912,101 @@ class KnowledgeQueryRequest(BaseModel):
     max_tokens: int = 4096
     temperature: float = 0.7
     stream: bool = True
+
+
+class KnowledgeBaseInfo(BaseModel):
+    """知识库信息"""
+    kb_id: str
+    create_time: float
+    file_name: Optional[str] = None
+
+
+@app.get("/api/v1/knowledge/list")
+async def list_knowledge_bases():
+    """获取所有可用的知识库列表"""
+    try:
+        # 获取知识库目录下的所有文件夹
+        kb_list = []
+        kb_dir = Path(os.path.abspath("cache_graph"))
+        
+        if os.path.exists(kb_dir):
+            for kb_id in os.listdir(kb_dir):
+                kb_path = kb_dir / kb_id
+                if os.path.isdir(kb_path):
+                    # 获取文件夹创建时间
+                    create_time = os.path.getctime(kb_path)
+                    
+                    # 尝试获取文件名
+                    file_name = None
+                    try:
+                        # 从知识库元数据中获取文件名
+                        meta_file = kb_path / "metadata.json"
+                        if os.path.exists(meta_file):
+                            with open(meta_file, "r", encoding="utf-8") as f:
+                                metadata = json.load(f)
+                                if "file_name" in metadata:
+                                    file_name = metadata["file_name"]
+                    except Exception:
+                        pass
+                    
+                    # 添加到列表
+                    kb_list.append(
+                        KnowledgeBaseInfo(
+                            kb_id=kb_id,
+                            create_time=create_time,
+                            file_name=file_name
+                        )
+                    )
+        
+        # 按创建时间降序排序
+        kb_list.sort(key=lambda x: x.create_time, reverse=True)
+        return {"kb_list": kb_list}
+        
+    except Exception as e:
+        print(f"获取知识库列表时出错: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"内部服务器错误: {str(e)}")
+
+
+@app.delete("/api/v1/knowledge/delete/{kb_id}")
+async def delete_knowledge_base(kb_id: str):
+    """删除指定的知识库"""
+    try:
+        # 验证知识库ID有效性
+        if not kb_id or not re.match(r'^[a-zA-Z0-9\-]+$', kb_id):
+            raise HTTPException(status_code=400, detail="无效的知识库ID")
+        
+        # 检查知识库是否存在
+        kb_path = Path(os.path.abspath("cache_graph")) / kb_id
+        if not os.path.exists(kb_path):
+            raise HTTPException(status_code=404, detail="知识库不存在")
+        
+        # 释放图资源
+        try:
+            log_id = str(uuid.uuid4())
+            manager = GraphManager(kb_id=kb_id, log_id=log_id)
+            manager.release_graph()
+        except Exception as e:
+            print(f"释放图资源时出错: {str(e)}")
+        
+        # 删除知识库目录
+        import shutil
+        shutil.rmtree(kb_path)
+        
+        # 清除Redis缓存
+        try:
+            redis_key = f"kb-manager:::{kb_id}"
+            RedisKVStore().delete(key=redis_key)
+        except Exception as e:
+            print(f"清除Redis缓存时出错: {str(e)}")
+        
+        return {"success": True, "message": "知识库已成功删除"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"删除知识库时出错: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"内部服务器错误: {str(e)}")
+
 
 @app.post("/api/v1/knowledge/query")
 async def query_knowledge(request: Request, query_request: KnowledgeQueryRequest):

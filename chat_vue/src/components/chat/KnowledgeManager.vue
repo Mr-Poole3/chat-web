@@ -11,6 +11,14 @@
       </div>
       <div 
         class="tab" 
+        :class="{ active: activeTab === 'list' }"
+        @click="switchTab('list')"
+      >
+        <i class="fas fa-database"></i>
+        <span>知识库列表</span>
+      </div>
+      <div 
+        class="tab" 
         :class="{ active: activeTab === 'query' }"
         @click="switchTab('query')"
       >
@@ -22,6 +30,7 @@
     <div class="content-container">
       <transition name="fade" mode="out-in">
         <KnowledgeBaseTool v-if="activeTab === 'upload'" />
+        <KnowledgeList v-else-if="activeTab === 'list'" />
         <KnowledgeQuery v-else />
       </transition>
     </div>
@@ -32,6 +41,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import KnowledgeBaseTool from './KnowledgeBaseTool.vue'
 import KnowledgeQuery from './KnowledgeQuery.vue'
+import KnowledgeList from './KnowledgeList.vue'
 
 const activeTab = ref('upload')
 
@@ -80,13 +90,16 @@ onUnmounted(() => {
 .tab {
   padding: 15px 20px;
   cursor: pointer;
-  transition: all 0.3s ease;
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-weight: 500;
-  color: #a5b4fc;
+  color: #9f9fb8;
   position: relative;
+  transition: all 0.2s;
+}
+
+.tab i {
+  margin-right: 8px;
+  font-size: 1rem;
 }
 
 .tab:hover {
@@ -100,28 +113,23 @@ onUnmounted(() => {
 .tab.active::after {
   content: '';
   position: absolute;
-  bottom: -1px;
-  left: 0;
-  width: 100%;
+  bottom: 0;
+  left: 10%;
+  width: 80%;
   height: 3px;
   background-color: #6366f1;
   border-radius: 3px 3px 0 0;
 }
 
-.tab i {
-  font-size: 1.1rem;
-}
-
 .content-container {
   flex: 1;
   overflow: hidden;
-  position: relative;
 }
 
-/* 过渡动画 */
+/* 淡入淡出过渡效果 */
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity 0.3s ease;
+  transition: opacity 0.2s ease;
 }
 
 .fade-enter-from,

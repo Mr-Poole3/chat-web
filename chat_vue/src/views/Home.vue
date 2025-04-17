@@ -238,7 +238,7 @@ const newPassword = ref('')
 
 const handleChangePassword = async () => {
   try {
-    const response = await fetch('/auth/change-password', {
+    const response = await fetch('/api/v1/auth/change-password', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

@@ -10,8 +10,20 @@
         <span class="kb-status-text">
           <i class="fas fa-database"></i> 当前知识库: {{ formatKbId(currentKbId) }}
         </span>
-        <button class="clear-kb-btn" @click="clearCurrentKb">
-          <i class="fas fa-times"></i>
+        <div class="kb-actions">
+          <button class="change-kb-btn" @click="goToKnowledgeList">
+            <i class="fas fa-exchange-alt"></i> 更换
+          </button>
+          <button class="clear-kb-btn" @click="clearCurrentKb">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
+      </div>
+      
+      <div v-else class="no-kb-selected">
+        <p>未选择知识库</p>
+        <button class="select-kb-btn" @click="goToKnowledgeList">
+          <i class="fas fa-database"></i> 选择知识库
         </button>
       </div>
       
@@ -21,13 +33,13 @@
           v-model="queryText" 
           placeholder="请输入您的问题..."
           @keydown.enter.prevent="handleEnterKey"
-          :disabled="isQuerying"
+          :disabled="isQuerying || !currentKbId"
           rows="3"
         ></textarea>
         <button 
           class="query-button" 
           @click="sendQuery" 
-          :disabled="!queryText.trim() || isQuerying">
+          :disabled="!queryText.trim() || isQuerying || !currentKbId">
           <i class="fas" :class="isQuerying ? 'fa-spinner fa-spin' : 'fa-paper-plane'"></i>
           {{ isQuerying ? '查询中...' : '提问' }}
         </button>
@@ -57,7 +69,7 @@
     <div class="empty-state" v-if="conversation.length === 0">
       <i class="fas fa-question-circle empty-icon"></i>
       <p>提问关于已上传文档的问题</p>
-      <div class="suggestion-questions">
+      <div class="suggestion-questions" v-if="currentKbId">
         <button 
           v-for="(question, index) in exampleQuestions" 
           :key="index"
@@ -95,10 +107,26 @@ const formatKbId = (id) => {
   return id.slice(0, 8) + '...'
 }
 
+// 导航到知识库列表
+const goToKnowledgeList = () => {
+  // 使用非标准的方式切换到知识库列表标签
+  const parentComponent = document.querySelector('.knowledge-manager')
+  if (parentComponent) {
+    const tabButtons = parentComponent.querySelectorAll('.tab')
+    // 点击知识库列表标签
+    if (tabButtons && tabButtons.length > 1) {
+      tabButtons[1].click() // 第二个标签是知识库列表
+    }
+  }
+}
+
 // 清除当前知识库
 const clearCurrentKb = () => {
   currentKbId.value = ''
   localStorage.removeItem('current_kb_id')
+  
+  // 清空对话历史
+  conversation.value = []
 }
 
 // 处理Enter键按下
@@ -124,7 +152,7 @@ const formatMessage = (content) => {
 
 // 发送查询
 const sendQuery = async () => {
-  if (!queryText.value.trim() || isQuerying.value) return
+  if (!queryText.value.trim() || isQuerying.value || !currentKbId.value) return
   
   const query = queryText.value.trim()
   
@@ -168,7 +196,7 @@ const sendQuery = async () => {
     }
     
     // 发送请求
-    const response = await fetch('/knowledge/query', {
+    const response = await fetch('/api/v1/knowledge/query', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -195,125 +223,65 @@ const sendQuery = async () => {
       source: responseSource
     }
     
+    // 清空输入框
+    queryText.value = ''
+    
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
       
       const text = decoder.decode(value)
-      const events = text.split('\n\n').filter(e => e.trim() !== '')
+      assistantResponse += text
       
-      for (const event of events) {
-        if (event.startsWith('data: ')) {
-          const data = event.substring(6)
-          
-          if (data === '[DONE]') continue
-          
-          try {
-            const jsonData = JSON.parse(data)
-            
-            // 处理Delta内容
-            if (jsonData.choices && jsonData.choices[0].delta && jsonData.choices[0].delta.content) {
-              const content = jsonData.choices[0].delta.content
-              assistantResponse += content
-              
-              // 更新响应来源
-              if (jsonData.source) {
-                responseSource = jsonData.source
-              }
-              
-              // 实时更新助手消息内容
-              conversation.value[assistantMessageIndex] = {
-                role: 'assistant',
-                content: assistantResponse,
-                source: responseSource
-              }
-            }
-          } catch (error) {
-            console.error('解析SSE数据时出错:', error)
-          }
-        }
+      // 更新显示的回答
+      conversation.value[assistantMessageIndex].content = assistantResponse
+      
+      // 检测回答来源
+      if (assistantResponse.includes('来自知识库') || assistantResponse.includes('根据文档')) {
+        conversation.value[assistantMessageIndex].source = 'knowledge_base'
       }
     }
-    
-    // 确保最终消息已更新
-    conversation.value[assistantMessageIndex] = {
-      role: 'assistant',
-      content: assistantResponse || '抱歉，我无法回答这个问题。',
-      source: responseSource
-    }
-    
   } catch (error) {
-    if (error.name === 'AbortError') {
-      console.log('请求被取消')
-    } else {
-      console.error('查询处理出错:', error)
-      
-      // 更新助手消息为错误状态
-      conversation.value[assistantMessageIndex] = {
-        role: 'assistant',
-        content: `查询出错: ${error.message}`,
-        error: true
-      }
+    console.error('发送查询请求失败:', error)
+    
+    // 更新助手消息为错误信息
+    if (assistantMessageIndex < conversation.value.length) {
+      conversation.value[assistantMessageIndex].content = '抱歉，查询过程中发生错误，请重试。'
+      conversation.value[assistantMessageIndex].isError = true
     }
   } finally {
     isQuerying.value = false
-    queryText.value = '' // 清空输入
     queryController.value = null
   }
 }
 
-// 从localStorage获取当前知识库ID
 onMounted(() => {
-  const savedKbId = localStorage.getItem('current_kb_id')
-  if (savedKbId) {
-    currentKbId.value = savedKbId
+  // 从localStorage获取当前知识库ID
+  const storedKbId = localStorage.getItem('current_kb_id')
+  if (storedKbId) {
+    currentKbId.value = storedKbId
   }
 })
 </script>
 
 <style scoped>
 .knowledge-query-container {
-  padding: 20px;
-  max-width: 900px;
-  margin: 0 auto;
-  color: #e0e0ff;
   height: 100%;
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: #6366f1 #1e2130;
-}
-
-/* 滚动条样式 */
-.knowledge-query-container::-webkit-scrollbar {
-  width: 6px;
-}
-
-.knowledge-query-container::-webkit-scrollbar-track {
-  background: #1e2130;
-}
-
-.knowledge-query-container::-webkit-scrollbar-thumb {
-  background-color: #6366f1;
-  border-radius: 3px;
-}
-
-.query-header {
-  text-align: center;
-  margin-bottom: 20px;
+  padding: 20px;
 }
 
 .query-header h2 {
-  color: #e0e0ff;
-  margin-bottom: 10px;
+  margin: 0 0 5px 0;
   font-size: 1.8rem;
-  font-weight: 600;
+  color: #e0e0ff;
 }
 
-.description {
-  color: #a5b4fc;
-  font-size: 1rem;
+.query-header .description {
+  margin: 0 0 20px 0;
+  color: #9f9fb8;
+  font-size: 0.9rem;
 }
 
 .query-input-section {
@@ -322,305 +290,231 @@ onMounted(() => {
 
 .kb-status {
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  background-color: rgba(99, 102, 241, 0.1);
-  padding: 8px 12px;
-  border-radius: 8px 8px 0 0;
-  border: 1px solid rgba(99, 102, 241, 0.3);
-  border-bottom: none;
+  align-items: center;
+  background: rgba(30, 34, 45, 0.7);
+  padding: 10px 15px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+  border-left: 3px solid #6366f1;
 }
 
 .kb-status-text {
-  color: #a5b4fc;
-  font-size: 0.9rem;
   display: flex;
   align-items: center;
-  gap: 8px;
+}
+
+.kb-status-text i {
+  color: #6366f1;
+  margin-right: 8px;
+}
+
+.kb-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.change-kb-btn {
+  background: rgba(99, 102, 241, 0.1);
+  color: #6366f1;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.change-kb-btn i {
+  margin-right: 4px;
 }
 
 .clear-kb-btn {
-  background: none;
+  background: rgba(220, 38, 38, 0.1);
+  color: #ef4444;
   border: none;
-  color: #a5b4fc;
-  cursor: pointer;
-  padding: 4px;
+  border-radius: 4px;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
-  transition: all 0.2s;
+  cursor: pointer;
 }
 
-.clear-kb-btn:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-  color: #e0e0ff;
+.no-kb-selected {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(220, 38, 38, 0.1);
+  padding: 10px 15px;
+  border-radius: 8px;
+  margin-bottom: 15px;
+  border-left: 3px solid #ef4444;
+}
+
+.select-kb-btn {
+  background: #6366f1;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 5px 10px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.select-kb-btn i {
+  margin-right: 5px;
 }
 
 .input-container {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  width: 100%;
   position: relative;
 }
 
 .query-input {
   width: 100%;
   padding: 15px;
-  border-radius: 8px;
-  background-color: rgba(30, 33, 48, 0.7);
   border: 1px solid rgba(99, 102, 241, 0.3);
+  border-radius: 8px;
+  background: rgba(30, 34, 45, 0.7);
   color: #e0e0ff;
+  font-family: inherit;
   font-size: 1rem;
-  resize: vertical;
-  min-height: 60px;
-  outline: none;
-  transition: all 0.3s ease;
-}
-
-.kb-status + .input-container .query-input {
-  border-radius: 0 0 8px 8px;
+  resize: none;
 }
 
 .query-input:focus {
+  outline: none;
   border-color: #6366f1;
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
 }
 
 .query-input:disabled {
-  opacity: 0.7;
+  opacity: 0.6;
   cursor: not-allowed;
 }
 
 .query-button {
   position: absolute;
-  bottom: 10px;
-  right: 10px;
-  background-color: #6366f1;
+  bottom: 15px;
+  right: 15px;
+  background: #6366f1;
   color: white;
   border: none;
-  border-radius: 6px;
+  border-radius: 4px;
   padding: 8px 16px;
-  cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-weight: 500;
-  transition: all 0.3s ease;
-}
-
-.query-button:hover:not(:disabled) {
-  background-color: #4c4ed9;
-  transform: translateY(-2px);
-  box-shadow: 0 2px 5px rgba(76, 78, 229, 0.3);
+  gap: 5px;
+  cursor: pointer;
 }
 
 .query-button:disabled {
-  background-color: #444;
+  opacity: 0.5;
   cursor: not-allowed;
-  opacity: 0.7;
 }
 
 .conversation-container {
   flex: 1;
   overflow-y: auto;
-  margin-top: 20px;
+  padding: 10px 0;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  scrollbar-width: thin;
-  scrollbar-color: #6366f1 #1e2130;
-  padding-right: 5px;
-}
-
-.conversation-container::-webkit-scrollbar {
-  width: 4px;
-}
-
-.conversation-container::-webkit-scrollbar-track {
-  background: #1e2130;
-}
-
-.conversation-container::-webkit-scrollbar-thumb {
-  background-color: #6366f1;
-  border-radius: 2px;
+  gap: 20px;
 }
 
 .message {
   padding: 15px;
-  border-radius: 12px;
-  max-width: 100%;
-  animation: fadeIn 0.3s ease;
+  border-radius: 8px;
+  max-width: 95%;
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.message.user {
-  background-color: rgba(99, 102, 241, 0.15);
-  border-left: 3px solid #6366f1;
+.user {
   align-self: flex-end;
+  background: rgba(99, 102, 241, 0.1);
+  border-right: 3px solid #6366f1;
 }
 
-.message.assistant {
-  background-color: rgba(30, 33, 48, 0.7);
-  border-left: 3px solid #10b981;
+.assistant {
   align-self: flex-start;
+  background: rgba(30, 34, 45, 0.7);
+  border-left: 3px solid #10b981;
 }
 
 .message-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 8px;
-  font-size: 0.9rem;
+  margin-bottom: 5px;
 }
 
 .message-role {
-  font-weight: bold;
-  color: #a5b4fc;
+  font-weight: 600;
+  font-size: 0.85rem;
   display: flex;
   align-items: center;
-  gap: 6px;
 }
 
-.message.assistant .message-role {
+.message-role i {
+  margin-right: 5px;
+  color: #6366f1;
+}
+
+.assistant .message-role i {
   color: #10b981;
 }
 
 .message-source {
-  font-size: 0.8rem;
-  background-color: rgba(16, 185, 129, 0.1);
-  color: #10b981;
+  font-size: 0.75rem;
   padding: 2px 6px;
   border-radius: 4px;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .message-content {
-  color: #e0e0ff;
-  line-height: 1.6;
+  line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: break-word;
-  word-break: break-word;
-}
-
-/* 支持Markdown样式 */
-.message-content :deep(p) {
-  margin: 0.5em 0;
-}
-
-.message-content :deep(code) {
-  background-color: rgba(30, 33, 48, 0.5);
-  padding: 2px 4px;
-  border-radius: 4px;
-  font-family: monospace;
-  font-size: 0.9em;
-}
-
-.message-content :deep(pre) {
-  background-color: rgba(30, 33, 48, 0.5);
-  padding: 10px;
-  border-radius: 6px;
-  overflow-x: auto;
-  margin: 1em 0;
-}
-
-.message-content :deep(pre code) {
-  background-color: transparent;
-  padding: 0;
-}
-
-.message-content :deep(a) {
-  color: #818cf8;
-  text-decoration: none;
-}
-
-.message-content :deep(a:hover) {
-  text-decoration: underline;
-}
-
-.message-content :deep(ul), .message-content :deep(ol) {
-  padding-left: 1.5em;
-  margin: 0.5em 0;
-}
-
-.message-content :deep(li) {
-  margin: 0.3em 0;
 }
 
 .empty-state {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40px 20px;
-  color: #a5b4fc;
-  opacity: 0.7;
-  flex: 1;
-  text-align: center;
+  padding: 20px;
 }
 
 .empty-icon {
-  font-size: 60px;
-  margin-bottom: 15px;
+  font-size: 3rem;
   color: #6366f1;
+  margin-bottom: 20px;
 }
 
 .suggestion-questions {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
   justify-content: center;
+  gap: 10px;
   margin-top: 20px;
   max-width: 600px;
 }
 
 .suggestion-btn {
-  background-color: rgba(99, 102, 241, 0.1);
+  background: rgba(99, 102, 241, 0.1);
+  color: #6366f1;
   border: 1px solid rgba(99, 102, 241, 0.3);
-  color: #a5b4fc;
-  padding: 8px 12px;
   border-radius: 20px;
+  padding: 8px 15px;
+  font-size: 0.85rem;
   cursor: pointer;
-  transition: all 0.3s ease;
-  font-size: 0.9rem;
+  transition: all 0.2s;
 }
 
 .suggestion-btn:hover {
-  background-color: rgba(99, 102, 241, 0.2);
-  border-color: rgba(99, 102, 241, 0.5);
-  color: #e0e0ff;
-  transform: translateY(-2px);
-}
-
-/* 移动端响应式适配 */
-@media (max-width: 768px) {
-  .knowledge-query-container {
-    padding: 15px 10px;
-  }
-  
-  .query-header h2 {
-    font-size: 1.5rem;
-  }
-  
-  .query-input {
-    padding: 12px;
-  }
-  
-  .message {
-    padding: 12px;
-  }
-  
-  .suggestion-questions {
-    flex-direction: column;
-    gap: 8px;
-  }
-  
-  .suggestion-btn {
-    width: 100%;
-  }
+  background: rgba(99, 102, 241, 0.2);
 }
 </style> 

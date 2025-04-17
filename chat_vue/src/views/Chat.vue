@@ -163,7 +163,6 @@ const shouldAutoScroll = ref(true)
 // 聊天历史记录相关
 const chatHistory = ref([])
 const currentChatId = ref(null)
-const STORAGE_KEY = ref('chat_history')
 const MAX_HISTORY = 15 // 最大历史记录数量
 
 // 添加SSE相关的变量
@@ -173,6 +172,9 @@ const currentAssistantMessage = ref('')
 
 // 添加 abortController 变量
 const abortController = ref(null)
+
+// 在组件顶部添加标志变量
+const hasSavedMessages = ref(false)
 
 const scrollToBottom = async (force = false) => {
   if (!force && !shouldAutoScroll.value) return
@@ -200,177 +202,304 @@ const closeEventSource = () => {
   }
 }
 
-// 从本地存储加载历史记录
-const loadChatHistory = () => {
-  // 使用用户名作为存储键的一部分，保证每个用户有独立的历史记录
-  STORAGE_KEY.value = `chat_history_${username.value || 'guest'}`
-  const savedHistory = localStorage.getItem(STORAGE_KEY.value)
-  if (savedHistory) {
-    chatHistory.value = JSON.parse(savedHistory).slice(0, MAX_HISTORY)
-  }
-}
+// 从API加载历史记录
+const loadChatHistory = async () => {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      return;
+    }
 
-// 保存历史记录到本地存储
-const saveChatHistory = () => {
-  // 确保历史记录不超过最大数量
-  if (chatHistory.value.length > MAX_HISTORY) {
-    chatHistory.value = chatHistory.value.slice(0, MAX_HISTORY)
+    const response = await axios.get('/chat/history', {
+      params: {},
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'X-User-ID': userStore.userId
+      }
+    });
+
+    if (response.data && response.data.code === 200) {
+      chatHistory.value = response.data.data || [];
+    }
+  } catch (error) {
   }
-  localStorage.setItem(STORAGE_KEY.value, JSON.stringify(chatHistory.value))
 }
 
 // 创建新对话
-const createNewChat = () => {
+const createNewChat = async () => {
+  // 如果正在加载或有流式传输，先停止
+  if (loading.value) {
+    await stopGeneration();
+  }
+
   // 如果当前有对话，先保存
   if (currentChatId.value && messages.value.length > 0) {
-    saveCurrentChat()
+    await saveCurrentChat();
   }
   
-  // 创建新对话
-  currentChatId.value = Date.now().toString()
-  messages.value = []
-  
-  // 添加到历史记录前端
-  chatHistory.value.unshift({
-    id: currentChatId.value,
-    title: '新对话',
-    messages: [],
-    createdAt: new Date().toISOString(),
-    model: selectedModel.value
-  })
-  
-  // 如果超过最大数量，删除最旧的对话
-  if (chatHistory.value.length > MAX_HISTORY) {
-    chatHistory.value = chatHistory.value.slice(0, MAX_HISTORY)
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      return;
+    }
+    
+    // 调用API创建新会话
+    const response = await axios.post('/chat/sessions', {
+      title: '新对话',
+      model: selectedModel.value
+    }, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'X-User-ID': userStore.userId
+      }
+    });
+    
+    if (response.data && response.data.code === 200) {
+      // 设置当前会话ID
+      currentChatId.value = response.data.data.id;
+      messages.value = [];
+      
+      // 重新加载聊天历史
+      await loadChatHistory();
+    }
+  } catch (error) {
   }
-  
-  saveChatHistory()
 }
 
 // 保存当前对话
-const saveCurrentChat = () => {
-  if (!currentChatId.value) return
+const saveCurrentChat = async () => {
+  if (!currentChatId.value || messages.value.length === 0 || hasSavedMessages.value) return;
   
-  const chatIndex = chatHistory.value.findIndex(chat => chat.id === currentChatId.value)
-  if (chatIndex !== -1) {
-    // 更新现有对话
-    chatHistory.value[chatIndex].messages = [...messages.value]
-    chatHistory.value[chatIndex].updatedAt = new Date().toISOString()
-    chatHistory.value[chatIndex].model = selectedModel.value
-  } else {
-    // 创建新对话记录
-    chatHistory.value.unshift({
-      id: currentChatId.value,
-      title: messages.value[0]?.content.slice(0, 30) + '...' || '新对话',
-      messages: [...messages.value],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      model: selectedModel.value
-    })
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      return;
+    }
+    
+    // 获取当前对话在历史记录中的位置
+    const chatIndex = chatHistory.value.findIndex(chat => chat.id === currentChatId.value);
+    
+    // 更新会话标题（如果是新对话）
+    if (chatIndex === -1 && messages.value.length > 0) {
+      const title = messages.value[0]?.content.slice(0, 30) + '...' || '新对话';
+      await axios.put(`/chat/sessions/${currentChatId.value}/title`, { title }, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'X-User-ID': userStore.userId
+        }
+      });
+    }
+    
+    // 保存最新的聊天消息（只保存上次保存后的新消息）
+    const savedMessagesCount = chatIndex !== -1 ? chatHistory.value[chatIndex].messages.length : 0;
+    const newMessages = messages.value.slice(savedMessagesCount);
+    
+    // 添加检查，避免重复保存
+    if (newMessages.length === 0) {
+      return;
+    }
+    
+    for (let i = 0; i < newMessages.length; i++) {
+      const msg = newMessages[i];
+      try {
+        await axios.post('/chat/messages', {
+          session_id: currentChatId.value,
+          role: msg.role,
+          content: msg.content,
+          sequence: savedMessagesCount + i,
+          is_terminated: msg.is_terminated || false
+        }, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'X-User-ID': userStore.userId
+          }
+        });
+      } catch (error) {
+        // 如果是因为is_terminated字段不存在的错误，尝试不带该字段重新保存
+        if (error.response?.status === 500) {
+          try {
+            await axios.post('/chat/messages', {
+              session_id: currentChatId.value,
+              role: msg.role,
+              content: msg.content,
+              sequence: savedMessagesCount + i
+            }, {
+              headers: {
+                'Authorization': `Bearer ${token}`,
+                'X-User-ID': userStore.userId
+              }
+            });
+          } catch (retryError) {
+          }
+        }
+      }
+    }
+    
+    // 设置保存标志
+    hasSavedMessages.value = true;
+    
+    // 重新加载聊天历史以获取最新状态
+    await loadChatHistory();
+  } catch (error) {
   }
-  
-  saveChatHistory()
 }
 
 // 加载特定对话
-const loadChat = (chatId) => {
-  // 保存当前对话
-  if (currentChatId.value && messages.value.length > 0) {
-    saveCurrentChat()
+const loadChat = async (chatId) => {
+  // 如果正在加载或有流式传输，先停止
+  if (loading.value) {
+    await stopGeneration();
   }
   
   // 加载选中的对话
-  const chat = chatHistory.value.find(c => c.id === chatId)
+  const chat = chatHistory.value.find(c => c.id === chatId);
   if (chat) {
-    currentChatId.value = chat.id
-    messages.value = [...chat.messages]
-    selectedModel.value = chat.model || 'DeepSeek-R1'
+    currentChatId.value = chat.id;
+    messages.value = [...chat.messages];
+    selectedModel.value = chat.model || 'DeepSeek-R1';
   }
   
   // 在移动设备上自动关闭侧边栏
   if (window.innerWidth <= 768) {
-    sidebarExpanded.value = false
+    sidebarExpanded.value = false;
   }
 }
 
 // 删除对话
-const deleteChat = (chatId) => {
-  const index = chatHistory.value.findIndex(chat => chat.id === chatId)
-  if (index !== -1) {
-    chatHistory.value.splice(index, 1)
-    saveChatHistory()
-    
-    // 如果删除的是当前对话，创建新对话
-    if (chatId === currentChatId.value) {
-      createNewChat()
+const deleteChat = async (chatId) => {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      return;
     }
+    
+    // 如果删除的是当前对话，并且正在加载，先停止生成
+    if (chatId === currentChatId.value && loading.value) {
+      await stopGeneration();
+    }
+    
+    // 调用API删除对话
+    const response = await axios.delete(`/chat/sessions/${chatId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'X-User-ID': userStore.userId
+      }
+    });
+    
+    if (response.data && response.data.code === 200) {
+      // 从本地历史记录中移除
+      const index = chatHistory.value.findIndex(chat => chat.id === chatId);
+      if (index !== -1) {
+        // 暂存是否是当前对话
+        const isCurrentChat = chatId === currentChatId.value;
+        
+        // 从历史记录中删除
+        chatHistory.value.splice(index, 1);
+        
+        // 如果删除的是当前对话
+        if (isCurrentChat) {
+          if (chatHistory.value.length > 0) {
+            // 如果还有其他对话，加载第一个对话
+            currentChatId.value = chatHistory.value[0].id;
+            messages.value = [...chatHistory.value[0].messages];
+            selectedModel.value = chatHistory.value[0].model || 'DeepSeek-R1';
+          } else {
+            // 如果没有其他对话，创建新对话
+            await createNewChat();
+          }
+        }
+      }
+    }
+  } catch (error) {
   }
 }
 
 // 修改对话标题
-const updateChatTitle = (chatId, newTitle) => {
-  const chat = chatHistory.value.find(c => c.id === chatId)
-  if (chat) {
-    chat.title = newTitle
-    saveChatHistory()
+const updateChatTitle = async (chatId, newTitle) => {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      return;
+    }
+    
+    const response = await axios.put(`/chat/sessions/${chatId}/title`, { title: newTitle }, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'X-User-ID': userStore.userId
+      }
+    });
+    
+    if (response.data && response.data.code === 200) {
+      // 更新本地历史记录
+      const chat = chatHistory.value.find(c => c.id === chatId);
+      if (chat) {
+        chat.title = newTitle;
+      }
+    }
+  } catch (error) {
   }
 }
 
 // 发送消息
 const sendMessage = async () => {
-  if (!inputMessage.value.trim() || loading.value) return
-
-  // 如果是新对话，创建对话记录
-  if (!currentChatId.value) {
-    createNewChat()
-  }
-
-  const userMessage = inputMessage.value.trim()
+  if (!inputMessage.value.trim() || loading.value) return;
+  
+  const userMessage = inputMessage.value.trim();
+  inputMessage.value = '';
+  
+  // 重置保存标志
+  hasSavedMessages.value = false;
+  
+  // 添加用户消息到消息列表
   messages.value.push({
     role: 'user',
-    content: userMessage,
-    timestamp: new Date().toISOString()
-  })
+    content: userMessage
+  });
   
-  // 更新对话标题（如果是第一条消息）
-  if (messages.value.length === 1) {
-    updateChatTitle(currentChatId.value, userMessage.slice(0, 30) + '...')
-  }
+  // 添加一个临时的助手消息来显示流式响应
+  messages.value.push({
+    role: 'assistant',
+    content: '',
+    streaming: true
+  });
   
-  inputMessage.value = ''
-  loading.value = true
-  waitingForResponse.value = true
-  currentAssistantMessage.value = ''
-  shouldAutoScroll.value = true
-  await scrollToBottom(true)
-
+  loading.value = true;
+  waitingForResponse.value = true;
+  currentAssistantMessage.value = '';
+  shouldAutoScroll.value = true;
+  await scrollToBottom(true);
+  
+  // 创建新的 AbortController
+  abortController.value = new AbortController();
+  
   try {
     // 关闭可能存在的之前的连接
-    closeEventSource()
+    closeEventSource();
 
-    // 添加一个临时的助手消息来显示流式响应
-    messages.value.push({
-      role: 'assistant',
-      content: '',
-      streaming: true
-    })
-
-    // 创建新的 AbortController
-    abortController.value = new AbortController()
+    // 准备请求头
+    const headers = {
+      'Content-Type': 'application/json',
+      'X-User-ID': userStore.userId
+    };
+    
+    // 如果有token，添加到请求头
+    const token = localStorage.getItem('token');
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
 
     // 使用fetch API请求流式响应
     const response = await fetch('/api/v1/tools/chat', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: headers,
       body: JSON.stringify({
         model: selectedModel.value,
         prompt: userMessage,
         max_tokens: 4096,
         temperature: 0.7,
         stream: true,
-        feature: currentFeature.value.id
+        feature: currentFeature.value.id,
+        session_id: currentChatId.value
       }),
       signal: abortController.value.signal // 添加 signal
     });
@@ -443,7 +572,6 @@ const sendMessage = async () => {
                     }
                   }
                 } catch (jsonError) {
-                  console.error('解析JSON出错:', jsonError, dataContent);
                   // 如果JSON解析失败但有内容，直接添加原始内容
                   if (dataContent && dataContent !== '[DONE]' && 
                       lastIndex >= 0 && 
@@ -462,7 +590,6 @@ const sendMessage = async () => {
                 }
               }
             } catch (e) {
-              console.error('处理SSE数据时出错:', e, line);
             }
           }
         }
@@ -494,9 +621,8 @@ const sendMessage = async () => {
     }
 
     // 在流式响应完成后保存对话
-    saveCurrentChat()
+    await saveCurrentChat();
   } catch (error) {
-    console.error('聊天请求错误:', error);
 
     // 更新最后一条消息为错误信息
     const lastIndex = messages.value.length - 1;
@@ -529,56 +655,70 @@ const newline = (e) => {
 
 // 登出功能
 const handleLogout = () => {
-  localStorage.removeItem('token');
-  router.push('/login');
+  // 如果正在加载或有流式传输，先停止
+  if (loading.value) {
+    stopGeneration()
+  }
+  localStorage.removeItem('token')
+  router.push('/login')
 }
 
 // 工具加载功能
 const loadTool = (toolId) => {
   if (toolId === 'pdf-to-word') {
-    alert('开发中，敬请期待！');
-    return;
+    alert('开发中，敬请期待！')
+    return
+  }
+
+  // 如果正在加载或有流式传输，先停止
+  if (loading.value) {
+    stopGeneration()
   }
 
   // 隐藏AI聊天页面
-  document.getElementById('ai-chat-page').style.display = 'none';
+  document.getElementById('ai-chat-page').style.display = 'none'
   
   // 隐藏所有工具页面
   document.querySelectorAll('.tool-page').forEach(page => {
-    page.style.display = 'none';
-  });
+    page.style.display = 'none'
+  })
   
   // 显示选定的工具页面
-  const selectedToolPage = document.getElementById(`${toolId}-page`);
+  const selectedToolPage = document.getElementById(`${toolId}-page`)
   if (selectedToolPage) {
-    selectedToolPage.style.display = 'flex';
+    selectedToolPage.style.display = 'flex'
   }
   
   // 更新活跃工具ID
-  activeToolId.value = toolId;
+  activeToolId.value = toolId
   
   // 在移动设备上自动关闭侧边栏
   if (window.innerWidth <= 768) {
-    sidebarExpanded.value = false;
+    sidebarExpanded.value = false
   }
 }
 
 // 返回聊天功能
 const loadChatTool = () => {
+  // 如果正在加载或有流式传输，先停止
+  if (loading.value) {
+    stopGeneration()
+  }
+
   // 显示AI聊天页面
-  document.getElementById('ai-chat-page').style.display = 'flex';
+  document.getElementById('ai-chat-page').style.display = 'flex'
   
   // 隐藏所有工具页面
   document.querySelectorAll('.tool-page').forEach(page => {
-    page.style.display = 'none';
-  });
+    page.style.display = 'none'
+  })
   
   // 更新活跃工具ID
-  activeToolId.value = 'chat';
+  activeToolId.value = 'chat'
   
   // 在移动设备上自动关闭侧边栏
   if (window.innerWidth <= 768) {
-    sidebarExpanded.value = false;
+    sidebarExpanded.value = false
   }
 }
 
@@ -599,12 +739,13 @@ const loadUserInfo = () => {
   .then(response => {
     if (response.data && response.data.username) {
       username.value = response.data.username;
-      // 在获取用户名后重新加载聊天历史
+      userStore.setUserId(response.data.id);
+      userStore.setUsername(response.data.username);
+      // 在获取用户名后加载聊天历史
       loadChatHistory();
     }
   })
   .catch(error => {
-    console.error('Error loading user info:', error);
     localStorage.removeItem('token');
     router.push('/login');
   });
@@ -625,11 +766,15 @@ const handleResize = () => {
 
 // 在组件卸载时关闭SSE连接
 onUnmounted(() => {
-  closeEventSource();
-  window.removeEventListener('resize', handleResize);
+  // 停止所有生成并清理资源
+  if (loading.value) {
+    stopGeneration()
+  }
+  closeEventSource()
+  window.removeEventListener('resize', handleResize)
   // 移除滚动事件监听
   if (messagesContainer.value?.$el) {
-    messagesContainer.value.$el.removeEventListener('scroll', handleScroll);
+    messagesContainer.value.$el.removeEventListener('scroll', handleScroll)
   }
 })
 
@@ -665,11 +810,6 @@ onMounted(() => {
     });
   }
   
-  // 打印环境变量，用于调试
-  console.log('环境:', import.meta.env.MODE);
-  console.log('API基础URL:', import.meta.env.VITE_API_BASE_URL);
-  console.log('WS基础URL:', import.meta.env.VITE_WS_BASE_URL);
-  
   // 监听窗口大小变化
   window.addEventListener('resize', handleResize);
   handleResize(); // 初始调用一次
@@ -679,104 +819,115 @@ onMounted(() => {
 const handleEditMessage = async ({ index, content }) => {
   // 如果正在加载或流式传输中，不允许编辑
   if (loading.value || messages.value.some(m => m.streaming)) {
-    return
+    return;
   }
 
-  const originalMessage = messages.value[index]
+  const originalMessage = messages.value[index];
   if (!originalMessage || originalMessage.role !== 'user') {
-    return
+    return;
   }
 
   // 更新消息内容
-  messages.value[index].content = content
+  messages.value[index].content = content;
 
   // 删除这条消息之后的所有消息
-  messages.value = messages.value.slice(0, index + 1)
+  messages.value = messages.value.slice(0, index + 1);
 
   // 重新发送消息以获取新的回复
-  loading.value = true
-  waitingForResponse.value = true
-  currentAssistantMessage.value = ''
-  shouldAutoScroll.value = true
-  await scrollToBottom(true)
+  loading.value = true;
+  waitingForResponse.value = true;
+  currentAssistantMessage.value = '';
+  shouldAutoScroll.value = true;
+  await scrollToBottom(true);
 
   try {
     // 关闭可能存在的之前的连接
-    closeEventSource()
+    closeEventSource();
 
     // 添加一个临时的助手消息来显示流式响应
     messages.value.push({
       role: 'assistant',
       content: '',
       streaming: true
-    })
+    });
+
+    // 准备请求头
+    const headers = {
+      'Content-Type': 'application/json',
+      'X-User-ID': userStore.userId
+    };
+    
+    // 如果有token，添加到请求头
+    const token = localStorage.getItem('token');
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
 
     // 使用fetch API请求流式响应
     const response = await fetch('/api/v1/tools/chat', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: headers,
       body: JSON.stringify({
         model: selectedModel.value,
         prompt: content,
         max_tokens: 4096,
         temperature: 0.7,
         stream: true,
-        feature: currentFeature.value.id
+        feature: currentFeature.value.id,
+        session_id: currentChatId.value
       })
-    })
+    });
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
 
     // 创建一个Reader来读取流数据
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
     
     // 获取最后一条消息的索引用于更新
-    const lastIndex = messages.value.length - 1
+    const lastIndex = messages.value.length - 1;
     
     // 读取流数据并实时更新UI
     while (true) {
       try {
-        const { done, value } = await reader.read()
+        const { done, value } = await reader.read();
         if (done) {
           // 标记消息流已结束
           if (lastIndex >= 0 && messages.value[lastIndex].role === 'assistant') {
-            messages.value[lastIndex].streaming = false
+            messages.value[lastIndex].streaming = false;
           }
-          break
+          break;
         }
         
         // 解码二进制数据
-        const chunk = decoder.decode(value, { stream: true })
-        buffer += chunk
+        const chunk = decoder.decode(value, { stream: true });
+        buffer += chunk;
         
         // 处理buffer中的SSE数据
-        const lines = buffer.split('\n\n')
+        const lines = buffer.split('\n\n');
         
         // 创建一个新的buffer用于存储未处理完的行
-        let newBuffer = ''
+        let newBuffer = '';
         
         // 逐行处理
         for (let i = 0; i < lines.length - 1; i++) {
-          const line = lines[i].trim()
+          const line = lines[i].trim();
           
           if (line.startsWith('data: ')) {
             try {
               // 提取data:后面的内容
-              const dataContent = line.substring(6).trim()
+              const dataContent = line.substring(6).trim();
               
               // 跳过[DONE]标记
-              if (dataContent === '[DONE]') continue
+              if (dataContent === '[DONE]') continue;
               
               // 尝试解析JSON
               if (dataContent.startsWith('{')) {
                 try {
-                  const jsonData = JSON.parse(dataContent)
+                  const jsonData = JSON.parse(dataContent);
                   
                   // 处理DeepSeek或Azure风格的响应
                   if (jsonData.choices && 
@@ -784,24 +935,23 @@ const handleEditMessage = async ({ index, content }) => {
                       jsonData.choices.length > 0 && 
                       jsonData.choices[0].delta && 
                       typeof jsonData.choices[0].delta.content === 'string') {
-                    const content = jsonData.choices[0].delta.content
+                    const content = jsonData.choices[0].delta.content;
                     if (content !== null) {
                       // 将内容添加到当前助手消息
                       if (lastIndex >= 0 && 
                           lastIndex < messages.value.length && 
                           messages.value[lastIndex].role === 'assistant') {
-                        messages.value[lastIndex].content += content
+                        messages.value[lastIndex].content += content;
                       }
                     }
                   }
                 } catch (jsonError) {
-                  console.error('解析JSON出错:', jsonError, dataContent)
                   // 如果JSON解析失败但有内容，直接添加原始内容
                   if (dataContent && dataContent !== '[DONE]' && 
                       lastIndex >= 0 && 
                       lastIndex < messages.value.length && 
                       messages.value[lastIndex].role === 'assistant') {
-                    messages.value[lastIndex].content += dataContent
+                    messages.value[lastIndex].content += dataContent;
                   }
                 }
               } else {
@@ -810,22 +960,21 @@ const handleEditMessage = async ({ index, content }) => {
                     lastIndex >= 0 && 
                     lastIndex < messages.value.length && 
                     messages.value[lastIndex].role === 'assistant') {
-                  messages.value[lastIndex].content += dataContent
+                  messages.value[lastIndex].content += dataContent;
                 }
               }
             } catch (e) {
-              console.error('处理SSE数据时出错:', e, line)
             }
           }
         }
         
         // 保留最后一行（可能不完整）
-        newBuffer = lines[lines.length - 1]
-        buffer = newBuffer
+        newBuffer = lines[lines.length - 1];
+        buffer = newBuffer;
         
         // 只在启用自动滚动时滚动到底部
         if (shouldAutoScroll.value) {
-          await scrollToBottom()
+          await scrollToBottom();
         }
       } catch (streamError) {
         // 更新最后一条消息以显示错误
@@ -833,61 +982,72 @@ const handleEditMessage = async ({ index, content }) => {
             lastIndex < messages.value.length && 
             messages.value[lastIndex].role === 'assistant') {
 
-          messages.value[lastIndex].streaming = false
+          messages.value[lastIndex].streaming = false;
         }
-        break
+        break;
       }
     }
 
-    loading.value = false
-    waitingForResponse.value = false
+    loading.value = false;
+    waitingForResponse.value = false;
     if (shouldAutoScroll.value) {
-      await scrollToBottom()
+      await scrollToBottom();
     }
 
     // 保存对话
-    saveCurrentChat()
+    await saveCurrentChat();
   } catch (error) {
-    console.error('编辑消息请求错误:', error)
 
     // 更新最后一条消息为错误信息
-    const lastIndex = messages.value.length - 1
+    const lastIndex = messages.value.length - 1;
     if (lastIndex >= 0 && messages.value[lastIndex].role === 'assistant') {
       messages.value[lastIndex].content = `
 抱歉，发生了错误，请稍后重试。
 
 错误详情: ${error.message || '未知错误'}
-      `.trim()
-      messages.value[lastIndex].streaming = false
+      `.trim();
+      messages.value[lastIndex].streaming = false;
     }
 
     // 重置状态
-    loading.value = false
-    waitingForResponse.value = false
+    loading.value = false;
+    waitingForResponse.value = false;
     if (shouldAutoScroll.value) {
-      await scrollToBottom()
+      await scrollToBottom();
     }
   }
 }
 
 // 添加停止生成的方法
-const stopGeneration = () => {
+const stopGeneration = async () => {
   if (abortController.value) {
-    abortController.value.abort()
-    abortController.value = null
+    abortController.value.abort();
+    abortController.value = null;
   }
-  loading.value = false
-  waitingForResponse.value = false
+  
+  // 关闭可能存在的之前的连接
+  closeEventSource();
+  
+  loading.value = false;
+  waitingForResponse.value = false;
   
   // 更新最后一条消息的状态
-  const lastIndex = messages.value.length - 1
+  const lastIndex = messages.value.length - 1;
   if (lastIndex >= 0 && messages.value[lastIndex].role === 'assistant') {
-    messages.value[lastIndex].streaming = false
-    messages.value[lastIndex].content += '\n\n[已停止生成]'
+    messages.value[lastIndex].streaming = false;
+    
+    // 只有在有内容时才添加[已停止生成]标记
+    if (messages.value[lastIndex].content.trim()) {
+      messages.value[lastIndex].content += '\n\n[已停止生成]';
+      messages.value[lastIndex].is_terminated = true;
+      
+      // 不再在这里设置标志和保存消息
+      // 让流式输出完全结束后再保存
+    } else {
+      // 如果没有内容，直接移除这条消息
+      messages.value.pop();
+    }
   }
-  
-  // 保存当前对话
-  saveCurrentChat()
 }
 </script>
 

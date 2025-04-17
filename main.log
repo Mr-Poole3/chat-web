@@ -4,81 +4,22 @@ nohup: ignoring input
   warnings.warn(message, UserWarning)
 INFO:     Will watch for changes in these directories: ['/home/ecs-user/chat-web']
 INFO:     Uvicorn running on http://0.0.0.0:8000 (Press CTRL+C to quit)
-INFO:     Started reloader process [54436] using StatReload
+INFO:     Started reloader process [74686] using StatReload
 开发模式已启用，热重载功能已开启
 /home/ecs-user/.local/lib/python3.10/site-packages/pydantic/_internal/_config.py:373: UserWarning: Valid config keys have changed in V2:
 * 'orm_mode' has been renamed to 'from_attributes'
   warnings.warn(message, UserWarning)
-INFO:     Started server process [54464]
+INFO:     Started server process [74701]
 INFO:     Waiting for application startup.
 INFO:     Application startup complete.
 Received login request for username: lipan
 Password validation result: True
-INFO:     127.0.0.1:60050 - "POST /api/v1/auth/login HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60066 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51802 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
-INFO:     127.0.0.1:51814 - "POST /api/v1/tools/chat HTTP/1.1" 200 OK
-INFO:     127.0.0.1:40812 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
-INFO:     195.178.110.164:0 - "GET /api/v1/.git/config HTTP/1.1" 404 Not Found
-INFO:     127.0.0.1:54884 - "GET /api/v1/auth/me HTTP/1.1" 500 Internal Server Error
-ERROR:    Exception in ASGI application
-Traceback (most recent call last):
-  File "/home/ecs-user/.local/lib/python3.10/site-packages/uvicorn/protocols/http/h11_impl.py", line 403, in run_asgi
-    result = await app(  # type: ignore[func-returns-value]
-  File "/home/ecs-user/.local/lib/python3.10/site-packages/uvicorn/middleware/proxy_headers.py", line 60, in __call__
-    return await self.app(scope, receive, send)
-  File "/home/ecs-user/.local/lib/python3.10/site-packages/fastapi/applications.py", line 1054, in __call__
-    await super().__call__(scope, receive, send)
-  File "/home/ecs-user/.local/lib/python3.10/site-packages/starlette/applications.py", line 112, in __call__
-    await self.middleware_stack(scope, receive, send)
-  File "/home/ecs-user/.local/lib/python3.10/site-packages/starlette/middleware/errors.py", line 187, in __call__
-    raise exc
-  File "/home/ecs-user/.local/lib/python3.10/site-packages/starlette/middleware/errors.py", line 165, in __call__
-    await self.app(scope, receive, _send)
-  File "/home/ecs-user/.local/lib/python3.10/site-packages/starlette/middleware/cors.py", line 85, in __call__
-    await self.app(scope, receive, send)
-  File "/home/ecs-user/.local/lib/python3.10/site-packages/starlette/middleware/exceptions.py", line 62, in __call__
-    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
-  File "/home/ecs-user/.local/lib/python3.10/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
-    raise exc
-  File "/home/ecs-user/.local/lib/python3.10/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
-    await app(scope, receive, sender)
-  File "/home/ecs-user/.local/lib/python3.10/site-packages/starlette/routing.py", line 714, in __call__
-    await self.middleware_stack(scope, receive, send)
-  File "/home/ecs-user/.local/lib/python3.10/site-packages/starlette/routing.py", line 734, in app
-    await route.handle(scope, receive, send)
-  File "/home/ecs-user/.local/lib/python3.10/site-packages/starlette/routing.py", line 288, in handle
-    await self.app(scope, receive, send)
-  File "/home/ecs-user/.local/lib/python3.10/site-packages/starlette/routing.py", line 76, in app
-    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
-  File "/home/ecs-user/.local/lib/python3.10/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
-    raise exc
-  File "/home/ecs-user/.local/lib/python3.10/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
-    await app(scope, receive, sender)
-  File "/home/ecs-user/.local/lib/python3.10/site-packages/starlette/routing.py", line 73, in app
-    response = await f(request)
-  File "/home/ecs-user/.local/lib/python3.10/site-packages/fastapi/routing.py", line 291, in app
-    solved_result = await solve_dependencies(
-  File "/home/ecs-user/.local/lib/python3.10/site-packages/fastapi/dependencies/utils.py", line 638, in solve_dependencies
-    solved = await call(**solved_result.values)
-  File "/home/ecs-user/chat-web/auth.py", line 134, in get_current_user
-    payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
-  File "/home/ecs-user/.local/lib/python3.10/site-packages/jwt/api_jwt.py", line 119, in decode
-    decoded = self.decode_complete(jwt, key, algorithms, options, **kwargs)
-  File "/home/ecs-user/.local/lib/python3.10/site-packages/jwt/api_jwt.py", line 106, in decode_complete
-    self._validate_claims(payload, merged_options, **kwargs)
-  File "/home/ecs-user/.local/lib/python3.10/site-packages/jwt/api_jwt.py", line 142, in _validate_claims
-    self._validate_exp(payload, now, leeway)
-  File "/home/ecs-user/.local/lib/python3.10/site-packages/jwt/api_jwt.py", line 177, in _validate_exp
-    raise ExpiredSignatureError("Signature has expired")
-jwt.exceptions.ExpiredSignatureError: Signature has expired
-Received login request for username: lipan
-Password validation result: True
-INFO:     127.0.0.1:55642 - "POST /api/v1/auth/login HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55656 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
-INFO:     127.0.0.1:55666 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
-INFO:     127.0.0.1:53352 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
-INFO:     127.0.0.1:39892 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
-INFO:     127.0.0.1:58708 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
-INFO:     127.0.0.1:43252 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
-INFO:     127.0.0.1:60502 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36060 - "POST /api/v1/auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36072 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36080 - "GET /api/v1/auth/me HTTP/1.1" 200 OK
+收到请求数据: {'title': '新对话', 'model': 'DeepSeek-R1'}
+从请求体中获取的用户ID: None
+从请求头获取的用户ID: 1
+INFO:     127.0.0.1:36096 - "POST /api/v1/chat/sessions HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36104 - "GET /api/v1/chat/history HTTP/1.1" 200 OK
+INFO:     127.0.0.1:36108 - "GET /api/v1/chat/history HTTP/1.1" 200 OK

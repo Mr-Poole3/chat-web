@@ -1,17 +1,27 @@
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi import FastAPI, HTTPException, Request, Depends, Body
+from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional, Dict, Any
 import asyncio
 import httpx
 import json
 import queue
-from openai import AzureOpenAI  # Add this import at the top with other imports
+from openai import AzureOpenAI
 import os
+import pymysql
+from pymysql.cursors import DictCursor
+import datetime
+import uuid
+from dotenv import load_dotenv
+import jwt
+from auth import JWT_SECRET_KEY, JWT_ALGORITHM
 
 from base import app
+
+# 加载环境变量
+load_dotenv()
 
 """
 https://ds.yovole.com/api/chat/completions
@@ -29,6 +39,23 @@ azure_endpoint="https://euinstance.openai.azure.com/"
 model_name: gpt-4o-mini
 """
 
+# 获取当前环境
+ENV = os.getenv("ENV", "development")
+
+# 根据环境配置数据库连接参数
+if ENV == "development":
+    DB_HOST = os.getenv("DEV_DB_HOST", "localhost")
+    DB_USER = os.getenv("DEV_DB_USER", "root")
+    DB_PASSWORD = os.getenv("DEV_DB_PASSWORD", "")
+    DB_NAME = os.getenv("DEV_DB_NAME", "ai")
+    DB_PORT = int(os.getenv("DEV_DB_PORT", "3306"))
+else:
+    DB_HOST = os.getenv("DB_HOST", "localhost")
+    DB_USER = os.getenv("DB_USER", "root")
+    DB_PASSWORD = os.getenv("DB_PASSWORD", "")
+    DB_NAME = os.getenv("DB_NAME", "ai")
+    DB_PORT = int(os.getenv("DB_PORT", "3306"))
+
 # API configuration
 DEEPSEEK_API_URL = "https://ds.yovole.com/api/chat/completions"
 DEEPSEEK_API_KEY = "sk-833480880d9d417fbcc7ce125ca7d78b"
@@ -43,6 +70,36 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 # 配置静态文件服务
 app.mount("/static", StaticFiles(directory=BASE_DIR), name="static")
 
+# 数据库连接函数
+def get_db_connection():
+    try:
+        connection = pymysql.connect(
+            host=DB_HOST,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            database=DB_NAME,
+            port=DB_PORT,
+            charset='utf8mb4',
+            cursorclass=DictCursor,
+            autocommit=True
+        )
+        return connection
+    except Exception as e:
+        print(f"数据库连接错误: {e}")
+        raise HTTPException(status_code=500, detail=f"数据库连接错误: {str(e)}")
+
+# 测试数据库连接
+@app.get("/api/v1/test-db")
+async def test_db():
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT 1 as test")
+            result = cursor.fetchone()
+        conn.close()
+        return {"status": "success", "result": result, "environment": ENV}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 # 添加根路由，返回index.html
 @app.get("/")
@@ -80,12 +137,30 @@ class ChatRequest(BaseModel):
     max_tokens: int = 4096 # Maximum tokens to generate
     temperature: float = 0.7  # Temperature for generation
     stream: bool = True  # Stream the response
+    feature: Optional[str] = "chat"  # 功能标识
+    session_id: Optional[str] = None  # 会话ID
+    is_terminated: Optional[bool] = False  # 是否被终止
 
 
 class ModelListResponse(BaseModel):
     code: int = 200
     msg: str = "success"
     models: List[str] = ["DeepSeek-V3", "DeepSeek-R1", "gpt-4o-mini"]
+
+
+class ChatSession(BaseModel):
+    id: str
+    title: str
+    model: str
+    messages: List[Dict[str, Any]] = []
+    createdAt: str
+    updatedAt: Optional[str] = None
+
+
+class ChatHistoryResponse(BaseModel):
+    code: int = 200
+    msg: str = "success"
+    data: List[ChatSession] = []
 
 
 @app.get("/v1/models", response_model=ModelListResponse)
@@ -96,6 +171,288 @@ async def list_models():
         msg="success",
         models=["DeepSeek-V3", "DeepSeek-R1", "gpt-4o-mini"]
     )
+
+
+# 获取用户的聊天历史
+@app.get("/api/v1/chat/history", response_model=ChatHistoryResponse)
+async def get_chat_history(request: Request, user_id: Optional[int] = None):
+    try:
+        if not user_id:
+            # 尝试从请求头获取用户ID
+            user_id = request.headers.get("X-User-ID")
+            
+        # 如果仍然没有找到用户ID，尝试从Authorization头部提取
+        if not user_id:
+            auth_header = request.headers.get("Authorization")
+            if auth_header and auth_header.startswith("Bearer "):
+                token = auth_header.replace("Bearer ", "")
+                try:
+                    # 解析JWT令牌获取用户信息
+                    payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+                    username = payload.get("sub")
+                    
+                    if username:
+                        # 从数据库获取用户ID
+                        conn = get_db_connection()
+                        with conn.cursor() as cursor:
+                            cursor.execute("SELECT id FROM users WHERE username = %s", (username,))
+                            user_data = cursor.fetchone()
+                            if user_data:
+                                user_id = user_data['id']
+                                print(f"从JWT令牌获取的用户ID: {user_id}")
+                        conn.close()
+                except Exception as e:
+                    print(f"解析JWT令牌出错: {e}")
+            
+        if not user_id:
+            raise HTTPException(status_code=400, detail="用户ID不能为空，请确保已登录")
+            
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            # 查询用户的所有聊天会话
+            sql = """
+            SELECT id, user_id, title, model, created_at, updated_at 
+            FROM chat_sessions 
+            WHERE user_id = %s 
+            ORDER BY updated_at DESC
+            LIMIT 15
+            """
+            cursor.execute(sql, (user_id,))
+            sessions = cursor.fetchall()
+            
+            # 转换日期格式并准备结果
+            result = []
+            for session in sessions:
+                # 查询每个会话的消息
+                sql_messages = """
+                SELECT role, content, timestamp
+                FROM chat_messages
+                WHERE session_id = %s
+                ORDER BY sequence ASC
+                """
+                cursor.execute(sql_messages, (session['id'],))
+                messages = cursor.fetchall()
+                
+                # 转换消息格式
+                formatted_messages = []
+                for msg in messages:
+                    formatted_messages.append({
+                        "role": msg['role'],
+                        "content": msg['content'],
+                        "timestamp": msg['timestamp'].isoformat()
+                    })
+                
+                result.append({
+                    "id": session['id'],
+                    "title": session['title'],
+                    "model": session['model'],
+                    "messages": formatted_messages,
+                    "createdAt": session['created_at'].isoformat(),
+                    "updatedAt": session['updated_at'].isoformat() if session['updated_at'] else None
+                })
+        
+        conn.close()
+        return ChatHistoryResponse(code=200, msg="success", data=result)
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        print(f"获取聊天历史记录错误: {e}")
+        raise HTTPException(status_code=500, detail=f"获取聊天历史记录错误: {str(e)}")
+
+
+# 创建新的聊天会话
+@app.post("/api/v1/chat/sessions")
+async def create_chat_session(
+    request: Request,
+    data: dict = Body(...),
+):
+    try:
+        print(f"收到请求数据: {data}")
+        user_id = data.get("user_id")
+        title = data.get("title", "新对话")
+        model = data.get("model", "DeepSeek-R1")
+        
+        # 打印调试信息
+        print(f"从请求体中获取的用户ID: {user_id}")
+        
+        if not user_id:
+            # 尝试从请求头获取用户ID
+            user_id = request.headers.get("X-User-ID")
+            print(f"从请求头获取的用户ID: {user_id}")
+            
+        # 如果仍然没有找到用户ID，尝试从Authorization头部提取
+        if not user_id:
+            auth_header = request.headers.get("Authorization")
+            if auth_header and auth_header.startswith("Bearer "):
+                token = auth_header.replace("Bearer ", "")
+                try:
+                    # 解析JWT令牌获取用户信息
+                    payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+                    username = payload.get("sub")
+                    
+                    if username:
+                        # 从数据库获取用户ID
+                        conn = get_db_connection()
+                        with conn.cursor() as cursor:
+                            cursor.execute("SELECT id FROM users WHERE username = %s", (username,))
+                            user_data = cursor.fetchone()
+                            if user_data:
+                                user_id = user_data['id']
+                                print(f"从JWT令牌获取的用户ID: {user_id}")
+                        conn.close()
+                except Exception as e:
+                    print(f"解析JWT令牌出错: {e}")
+            
+        if not user_id:
+            raise HTTPException(status_code=400, detail="用户ID不能为空，请确保已登录")
+            
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            session_id = str(uuid.uuid4())
+            now = datetime.datetime.now()
+            
+            sql = """
+            INSERT INTO chat_sessions (id, user_id, title, model, created_at, updated_at)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            """
+            cursor.execute(sql, (session_id, user_id, title, model, now, now))
+        
+        conn.close()
+        return {"code": 200, "msg": "success", "data": {"id": session_id}}
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        print(f"创建聊天会话错误: {e}")
+        raise HTTPException(status_code=500, detail=f"创建聊天会话错误: {str(e)}")
+
+
+# 更新聊天会话标题
+@app.put("/api/v1/chat/sessions/{session_id}/title")
+async def update_chat_title(session_id: str, title: str = Body(..., embed=True)):
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            now = datetime.datetime.now()
+            
+            sql = """
+            UPDATE chat_sessions 
+            SET title = %s, updated_at = %s
+            WHERE id = %s
+            """
+            cursor.execute(sql, (title, now, session_id))
+            
+            if cursor.rowcount == 0:
+                raise HTTPException(status_code=404, detail="会话不存在")
+        
+        conn.close()
+        return {"code": 200, "msg": "success"}
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        print(f"更新聊天标题错误: {e}")
+        raise HTTPException(status_code=500, detail=f"更新聊天标题错误: {str(e)}")
+
+
+# 删除聊天会话
+@app.delete("/api/v1/chat/sessions/{session_id}")
+async def delete_chat_session(session_id: str):
+    try:
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            # 先删除会话的所有消息
+            sql_delete_messages = """
+            DELETE FROM chat_messages
+            WHERE session_id = %s
+            """
+            cursor.execute(sql_delete_messages, (session_id,))
+            
+            # 再删除会话本身
+            sql_delete_session = """
+            DELETE FROM chat_sessions
+            WHERE id = %s
+            """
+            cursor.execute(sql_delete_session, (session_id,))
+            
+            if cursor.rowcount == 0:
+                raise HTTPException(status_code=404, detail="会话不存在")
+        
+        conn.close()
+        return {"code": 200, "msg": "success"}
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        print(f"删除聊天会话错误: {e}")
+        raise HTTPException(status_code=500, detail=f"删除聊天会话错误: {str(e)}")
+
+
+# 保存聊天消息
+@app.post("/api/v1/chat/messages")
+async def save_chat_message(
+    request: Request,
+    data: dict = Body(...)
+):
+    try:
+        session_id = data.get("session_id")
+        role = data.get("role")
+        content = data.get("content")
+        sequence = data.get("sequence")
+        is_terminated = data.get("is_terminated", False)
+        
+        if not all([session_id, role, content, sequence is not None]):
+            raise HTTPException(status_code=400, detail="缺少必要参数")
+            
+        conn = get_db_connection()
+        with conn.cursor() as cursor:
+            now = datetime.datetime.now()
+            
+            # 检查会话是否存在
+            check_sql = "SELECT id FROM chat_sessions WHERE id = %s"
+            cursor.execute(check_sql, (session_id,))
+            if not cursor.fetchone():
+                raise HTTPException(status_code=404, detail="会话不存在")
+            
+            try:
+                # 保存消息
+                sql = """
+                INSERT INTO chat_messages (session_id, role, content, timestamp, sequence, is_terminated)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                """
+                cursor.execute(sql, (session_id, role, content, now, sequence, is_terminated))
+                
+                # 更新会话的更新时间
+                update_sql = """
+                UPDATE chat_sessions
+                SET updated_at = %s
+                WHERE id = %s
+                """
+                cursor.execute(update_sql, (now, session_id))
+            except Exception as e:
+                print(f"SQL执行错误: {str(e)}")
+                # 如果是字段不存在的错误，尝试不包含is_terminated字段的插入
+                if "Unknown column 'is_terminated'" in str(e):
+                    sql = """
+                    INSERT INTO chat_messages (session_id, role, content, timestamp, sequence)
+                    VALUES (%s, %s, %s, %s, %s)
+                    """
+                    cursor.execute(sql, (session_id, role, content, now, sequence))
+                    
+                    # 更新会话的更新时间
+                    update_sql = """
+                    UPDATE chat_sessions
+                    SET updated_at = %s
+                    WHERE id = %s
+                    """
+                    cursor.execute(update_sql, (now, session_id))
+                else:
+                    raise e
+        
+        conn.close()
+        return {"code": 200, "msg": "success"}
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        print(f"保存聊天消息错误: {e}")
+        raise HTTPException(status_code=500, detail=f"保存聊天消息错误: {str(e)}")
 
 
 async def fetch_deepseek_response(
@@ -234,7 +591,6 @@ async def fetch_azure_response(
                 }
                 sse_message = f"data: {json.dumps(response_data)}\n\n"
                 response_queue.put(sse_message)
-                print(sse_message)
                 
         # 发送结束标记
         response_queue.put("data: [DONE]\n\n")
@@ -278,7 +634,29 @@ async def chat(request: Request, chat_request: ChatRequest):
     """Chat endpoint that streams responses from the selected model API"""
     try:
         response_queue = queue.Queue()
+        user_id = request.headers.get("X-User-ID")  # 假设前端会传递用户ID
         
+        # 如果提供了会话ID，检查会话是否存在
+        if chat_request.session_id:
+            conn = get_db_connection()
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT id FROM chat_sessions WHERE id = %s", (chat_request.session_id,))
+                session = cursor.fetchone()
+                if not session:
+                    # 如果会话不存在，创建一个新会话
+                    session_id = str(uuid.uuid4())
+                    now = datetime.datetime.now()
+                    cursor.execute(
+                        "INSERT INTO chat_sessions (id, user_id, title, model, created_at, updated_at) VALUES (%s, %s, %s, %s, %s, %s)",
+                        (session_id, user_id, chat_request.prompt[:30] + "...", chat_request.model, now, now)
+                    )
+                else:
+                    session_id = session['id']
+            conn.close()
+        else:
+            # 如果没有提供会话ID，不创建会话，仅返回响应
+            session_id = None
+            
         if chat_request.model in ["DeepSeek-V3", "DeepSeek-R1"]:
             t_openai = asyncio.create_task(fetch_deepseek_response(
                 chat_request.model, 

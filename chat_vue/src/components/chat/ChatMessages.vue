@@ -161,7 +161,6 @@ const vCopy = {
           }, 2000);
         })
         .catch(err => {
-          console.error('复制失败:', err);
           statusElement.textContent = '复制失败';
           setTimeout(() => {
             statusElement.textContent = '复制';
@@ -190,7 +189,6 @@ onBeforeMount(() => {
             }, 2000);
           })
           .catch(err => {
-            console.error('复制失败:', err);
             statusElement.textContent = '复制失败';
             setTimeout(() => {
               statusElement.textContent = '复制';
@@ -263,7 +261,6 @@ const onBotAnimationReady = (message) => {
       botAnimation.value.autoplay = false;
     }
   } catch (error) {
-    console.error('Error in onBotAnimationReady:', error);
   }
 }
 
@@ -281,7 +278,6 @@ const onBotAnimationComplete = () => {
       }
     }
   } catch (error) {
-    console.error('Error in onBotAnimationComplete:', error);
   }
 }
 
@@ -294,7 +290,6 @@ watch(() => props.messages, (newMessages) => {
       botAnimation.value.frame = 208;
     }
   } catch (error) {
-    console.error('Error in messages watcher:', error);
   }
 }, { deep: true })
 
@@ -316,7 +311,6 @@ const md = new MarkdownIt({
         // 返回带有语言类名的代码块
         return `<pre class="hljs"><code class="language-${lang}">${highlightedCode}</code></pre>`;
       } catch (error) {
-        console.error('代码高亮出错:', error);
       }
     }
     // 无法识别语言时，返回未格式化的代码并添加浅色样式
@@ -368,7 +362,6 @@ const renderedContent = (content) => {
           
           processedContent += `<div class="response-container markdown-body">${renderedHtml}</div>`;
         } catch (error) {
-          console.error('Markdown渲染错误:', error);
           processedContent += `<div class="error-content">${actualResponse}</div>`;
         }
       }
@@ -386,7 +379,6 @@ const renderedContent = (content) => {
     
     return `<div class="markdown-body">${renderedHtml}</div>`;
   } catch (error) {
-    console.error('Markdown渲染出错:', error);
     // 出错时以纯文本方式返回内容
     return `<div class="error-content">${content}</div>`;
   }

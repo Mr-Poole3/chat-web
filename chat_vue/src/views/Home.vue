@@ -153,7 +153,6 @@ const navigateToLogin = () => {
 
 const handleLogout = () => {
   userStore.logout()
-  console.log('用户已退出登录')
 }
 
 const toggleSidebar = () => {

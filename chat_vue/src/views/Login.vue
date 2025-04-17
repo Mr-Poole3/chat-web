@@ -87,7 +87,6 @@ const handleSubmit = async () => {
 
     // 如果有重定向参数则使用它，否则跳转到 chat 页面
     const redirectPath = route.query.redirect || '/chat'
-    console.log('Login successful, redirecting to:', redirectPath)
     router.push(redirectPath)
   } catch (err) {
     error.value = err.response?.data?.detail || '登录失败，请稍后重试'

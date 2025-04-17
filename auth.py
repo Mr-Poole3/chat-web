@@ -241,6 +241,20 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
         conn.close()
 
 
+# 获取当前用户信息
+@app.get("/auth/me", response_model=dict)
+async def get_current_user_info(current_user: dict = Depends(get_current_user)):
+    # 返回用户信息，但不包含密码
+    user_info = {
+        "id": current_user["id"],
+        "username": current_user["username"],
+        "email": current_user["email"],
+        "created_at": current_user["created_at"].isoformat() if isinstance(current_user["created_at"], datetime.datetime) else current_user["created_at"],
+        "updated_at": current_user["updated_at"].isoformat() if isinstance(current_user["updated_at"], datetime.datetime) else current_user["updated_at"]
+    }
+    return user_info
+
+
 if __name__ == "__main__":
     import uvicorn
 

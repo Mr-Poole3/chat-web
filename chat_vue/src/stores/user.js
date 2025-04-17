@@ -5,6 +5,8 @@ import router from '@/router'
 
 export const useUserStore = defineStore('user', () => {
   const token = ref(localStorage.getItem('token') || '')
+  const username = ref('')
+  const userId = ref(null)
   const user = ref(null)
 
   const isAuthenticated = computed(() => {
@@ -17,49 +19,38 @@ export const useUserStore = defineStore('user', () => {
       formData.append('username', credentials.username)
       formData.append('password', credentials.password)
 
-      console.log('Attempting login with:', credentials.username)
       const response = await axios.post('/auth/login', formData, {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded'
         }
       })
 
-      console.log('Login successful, got token:', response.data.access_token)
       token.value = response.data.access_token
       localStorage.setItem('token', token.value)
       await fetchUserInfo()
-
-      // 不再在这里处理路由跳转，由登录组件处理
-      // router.push('/chat')
     } catch (error) {
-      console.error('Login failed:', error)
       throw error
     }
   }
 
   const register = async (username, email, password) => {
     try {
-      console.log('Attempting registration for:', username)
       const response = await axios.post('/auth/register', {
         username,
         email,
         password
       })
 
-      console.log('Registration successful:', response.data)
       return response.data
     } catch (error) {
-      console.error('Registration failed:', error)
       throw error
     }
   }
 
   const logout = () => {
-    // 直接清除本地存储的token，不调用后端接口
     token.value = ''
     user.value = null
     localStorage.removeItem('token')
-    console.log('User logged out, token cleared')
     router.push('/login')
   }
 
@@ -72,18 +63,41 @@ export const useUserStore = defineStore('user', () => {
       })
       user.value = response.data
     } catch (error) {
-      console.error('Failed to fetch user info:', error)
       throw error
     }
   }
 
+  function setToken(newToken) {
+    token.value = newToken
+    localStorage.setItem('token', newToken)
+  }
+  
+  function clearToken() {
+    token.value = ''
+    localStorage.removeItem('token')
+  }
+  
+  function setUsername(newUsername) {
+    username.value = newUsername
+  }
+  
+  function setUserId(newUserId) {
+    userId.value = newUserId
+  }
+
   return {
     token,
+    username,
+    userId,
     user,
     isAuthenticated,
     login,
     register,
     logout,
-    fetchUserInfo
+    fetchUserInfo,
+    setToken,
+    clearToken,
+    setUsername,
+    setUserId
   }
 })

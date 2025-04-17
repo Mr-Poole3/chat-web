@@ -38,25 +38,21 @@ router.beforeEach((to, from, next) => {
   const userStore = useUserStore()
   const isAuthenticated = userStore.isAuthenticated || !!localStorage.getItem('token')
 
-  console.log('Navigation guard:', { to: to.path, isAuthenticated })
 
   // 需要认证的路由
   if (to.matched.some(record => record.meta.requiresAuth)) {
     if (!isAuthenticated) {
-      console.log('Redirecting to login, not authenticated')
       next({
         name: 'login',
         query: { redirect: to.fullPath }  // 保存原目标路径
       })
     } else {
-      console.log('Authenticated, proceeding to', to.path)
       next()
     }
   }
   // 游客路由（登录/注册）
   else if (to.matched.some(record => record.meta.requiresGuest)) {
     if (isAuthenticated) {
-      console.log('Already authenticated, redirecting to home')
       next({ name: 'home' })  // 已登录用户重定向到 home 页面
     } else {
       next()

@@ -22,6 +22,7 @@ from knowledge_base.core.build_graph import insert_data_2_graph
 from pathlib import Path
 from knowledge_base.core.grag import query_async
 import numpy as np
+import time
 
 from base import app
 
@@ -776,7 +777,7 @@ async def process_document(file: UploadFile = File(...)):
         )
         
         if not rag:
-            return {"results": [{"type": "处理结果", "confidence": 60, "text": "文档处理失败，请检查文档格式是否支持。"}]}
+            return {"results": [{"type": "处理结果", "confidence": 60, "text": "文档处理失败，请检查文档格式是否支持。"}], "kb_id": kb_id}
         
         # 提取关键信息
         results = []
@@ -859,13 +860,14 @@ async def process_document(file: UploadFile = File(...)):
         except Exception as e:
             print(f"转换最终结果时出错: {str(e)}")
             # 如果转换失败，返回一个简单的文本结果
-            return {"results": [{"type": "处理结果", "confidence": 60, "text": f"文档已处理，但在转换结果时出错。错误信息：{str(e)}"}]}
+            return {"results": [{"type": "处理结果", "confidence": 60, "text": f"文档已处理，但在转换结果时出错。错误信息：{str(e)}"}], "kb_id": kb_id}
             
-        return {"results": converted_results}
+        # 返回结果中添加知识库ID
+        return {"results": converted_results, "kb_id": kb_id}
         
     except Exception as e:
         print(f"处理文档时出错: {str(e)}")
-        return {"results": [{"type": "错误", "confidence": 0, "text": f"处理文档时出错: {str(e)}"}]}
+        return {"results": [{"type": "错误", "confidence": 0, "text": f"处理文档时出错: {str(e)}"}], "kb_id": None}
     finally:
         # 确保临时文件夹被清理
         if temp_dir and os.path.exists(temp_dir):
@@ -874,6 +876,169 @@ async def process_document(file: UploadFile = File(...)):
                 shutil.rmtree(temp_dir)
             except Exception as e:
                 print(f"清理临时文件时出错: {str(e)}")
+
+
+class KnowledgeQueryRequest(BaseModel):
+    """知识库查询请求"""
+    query: str
+    kb_id: Optional[str] = None  # 如果不提供，则使用最近的知识库或默认知识库
+    max_tokens: int = 4096
+    temperature: float = 0.7
+    stream: bool = True
+
+@app.post("/api/v1/knowledge/query")
+async def query_knowledge(request: Request, query_request: KnowledgeQueryRequest):
+    """基于知识库查询，如果知识库中没有相关信息，则使用LLM回答"""
+    try:
+        # 获取知识库ID，如果未提供则尝试获取最近的一个
+        kb_id = query_request.kb_id
+        if not kb_id:
+            # 可以从会话或配置中获取默认知识库ID
+            kb_id = str(uuid.uuid4())  # 临时ID用于测试
+        
+        log_id = str(uuid.uuid4())
+        response_queue = queue.Queue()
+        
+        # 创建知识库管理器并加载图谱
+        manager = GraphManager(kb_id=kb_id, log_id=log_id)
+        graph = manager.load_graph()
+        
+        # 尝试从知识库查询答案
+        knowledge_context = None
+        
+        if graph:
+            try:
+                # 查询知识库
+                query_result = await query_async(
+                    graph=graph,
+                    q=query_request.query,
+                    with_references=True,
+                    log_id=log_id
+                )
+                
+                # 正确处理TQueryResponse对象
+                if query_result:
+                    print(f"知识库查询结果类型: {type(query_result)}")
+                    
+                    # 提取实体信息
+                    entities_info = ""
+                    relations_info = ""
+                    chunks_info = ""
+                    
+                    try:
+                        # 如果有entities属性
+                        if hasattr(query_result, 'entities') and query_result.entities:
+                            entities = query_result.entities
+                            for entity in entities:
+                                if hasattr(entity, 'name') and hasattr(entity, 'description'):
+                                    entities_info += f"- {entity.name}: {entity.description}\n"
+                        
+                        # 如果有relations属性
+                        if hasattr(query_result, 'relations') and query_result.relations:
+                            relations = query_result.relations
+                            for relation in relations:
+                                if hasattr(relation, 'source') and hasattr(relation, 'target') and hasattr(relation, 'description'):
+                                    relations_info += f"- {relation.source} 和 {relation.target} 的关系: {relation.description}\n"
+                        
+                        # 如果有chunks属性
+                        if hasattr(query_result, 'chunks') and query_result.chunks:
+                            chunks = query_result.chunks
+                            for chunk in chunks:
+                                if hasattr(chunk, 'content'):
+                                    chunks_info += f"{chunk.content}\n"
+                        
+                        # 从context属性中提取
+                        if hasattr(query_result, 'context'):
+                            context = query_result.context
+                            if hasattr(context, 'entities'):
+                                for entity_tuple in context.entities:
+                                    entity = entity_tuple[0]  # 第一个元素是实体对象
+                                    if hasattr(entity, 'name') and hasattr(entity, 'description'):
+                                        entities_info += f"- {entity.name}: {entity.description}\n"
+                            
+                            if hasattr(context, 'relations'):
+                                for relation_tuple in context.relations:
+                                    relation = relation_tuple[0]  # 第一个元素是关系对象
+                                    if hasattr(relation, 'source') and hasattr(relation, 'target') and hasattr(relation, 'description'):
+                                        relations_info += f"- {relation.source} 和 {relation.target} 的关系: {relation.description}\n"
+                            
+                            if hasattr(context, 'chunks'):
+                                for chunk_tuple in context.chunks:
+                                    chunk = chunk_tuple[0]  # 第一个元素是块对象
+                                    if hasattr(chunk, 'content'):
+                                        chunks_info += f"{chunk.content}\n"
+                        
+                        # 组合所有信息
+                        knowledge_context = ""
+                        
+                        if chunks_info.strip():
+                            knowledge_context += "原文内容:\n" + chunks_info + "\n\n"
+                        
+                        if entities_info.strip():
+                            knowledge_context += "提取的实体:\n" + entities_info + "\n\n"
+                        
+                        if relations_info.strip():
+                            knowledge_context += "提取的关系:\n" + relations_info + "\n\n"
+                        
+                        # 如果没有提取到任何信息但query_result是字符串，直接使用
+                        if not knowledge_context and isinstance(query_result, str):
+                            knowledge_context = query_result
+                        
+                        # 如果query_result有response属性且为字符串，添加到context
+                        if hasattr(query_result, 'response') and isinstance(query_result.response, str):
+                            knowledge_context += "生成的回答:\n" + query_result.response
+                        
+                        print(f"从知识库提取的上下文: {knowledge_context[:300]}...")
+                        
+                    except Exception as e:
+                        print(f"处理知识库返回结果时出错: {str(e)}")
+                        # 尝试直接将查询结果转换为字符串作为后备方案
+                        try:
+                            knowledge_context = str(query_result)
+                            print(f"转换为字符串的知识库结果: {knowledge_context[:300]}...")
+                        except:
+                            print("无法将查询结果转换为字符串")
+                
+            except Exception as e:
+                print(f"知识库查询出错: {str(e)}")
+        
+        # 固定使用DeepSeek-V3模型
+        model = "DeepSeek-V3"
+        
+        # 构建带有提示的查询内容，加入知识库上下文
+        prompt = ""
+        if knowledge_context:
+            prompt = f"""用户问题: {query_request.query}
+            
+根据以下从文档中提取的信息回答：
+-----
+{knowledge_context}
+-----
+
+请直接回答用户问题，不要引用上述信息来源，不要提及你在使用文档信息，用自然的方式回答，就像这些知识是你已知的一样。请保持简洁明了，直接给出答案。如果文档中没有相关信息，请诚实地说明你无法回答。"""
+        else:
+            prompt = f"用户问题: {query_request.query}\n\n如果你知道答案，请直接回答。"
+        
+        print(f"发送到LLM的提示: {prompt[:500]}...")
+        
+        # 始终使用DeepSeek模型生成回答，即使有知识库结果
+        t_openai = asyncio.create_task(fetch_deepseek_response(
+            model, 
+            prompt, 
+            query_request.max_tokens, 
+            query_request.temperature, 
+            response_queue,
+            request
+        ))
+        
+        return StreamingResponse(
+            stream_from_queue(response_queue),
+            media_type="text/event-stream"
+        )
+        
+    except Exception as e:
+        print(f"知识库查询处理出错: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"内部服务器错误: {str(e)}")
 
 
 if __name__ == "__main__":

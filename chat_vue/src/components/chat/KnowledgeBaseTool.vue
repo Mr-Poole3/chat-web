@@ -35,9 +35,54 @@
         <i class="fas" :class="taskStatusIcon"></i>
         <span>{{ taskStatus }}</span>
       </div>
+       
+      <div class="query-link" v-if="currentKbId && !showQueryInput">
+        <button class="query-btn" @click="showQueryInput = true">
+          <i class="fas fa-question-circle"></i> 开始提问
+        </button>
+      </div>
     </div>
 
-    <div class="processing-section" v-if="currentFile">
+    <!-- 用户问题输入区域 -->
+    <div class="query-section" v-if="showQueryInput && currentKbId">
+      <div class="input-container">
+        <textarea 
+          class="query-input" 
+          v-model="queryText" 
+          placeholder="请输入您的问题..."
+          @keydown.enter.prevent="handleEnterKey"
+          :disabled="isQuerying"
+          rows="3"
+        ></textarea>
+        <button 
+          class="query-button" 
+          @click="sendQuery" 
+          :disabled="!queryText.trim() || isQuerying">
+          <i class="fas" :class="isQuerying ? 'fa-spinner fa-spin' : 'fa-paper-plane'"></i>
+          {{ isQuerying ? '查询中...' : '提问' }}
+        </button>
+      </div>
+    </div>
+
+    <!-- 对话结果区域 -->
+    <div class="conversation-container" v-if="conversation.length > 0">
+      <div 
+        v-for="(message, index) in conversation" 
+        :key="index" 
+        class="message"
+        :class="[message.role]"
+      >
+        <div class="message-header">
+          <span class="message-role">
+            <i class="fas" :class="message.role === 'user' ? 'fa-user' : 'fa-robot'"></i>
+            {{ message.role === 'user' ? '您' : '知识助手' }}
+          </span>
+        </div>
+        <div class="message-content" v-html="formatMessage(message.content)"></div>
+      </div>
+    </div>
+
+    <div class="processing-section" v-if="currentFile && !showQueryInput">
       <div class="file-info">
         <span class="file-name">{{ currentFile.name }}</span>
         <span class="file-size">({{ formatFileSize(currentFile.size) }})</span>
@@ -61,37 +106,10 @@
           <i class="fas fa-stop-circle"></i>
           取消
         </button>
-        <button @click="clearResults" v-if="!processing && results.length > 0" class="clear-btn">
-          <i class="fas fa-trash"></i>
-          清除结果
-        </button>
       </div>
     </div>
 
-    <div class="results-section" v-if="results.length > 0">
-      <h3>处理结果</h3>
-      <div class="results-content">
-        <div v-for="(result, index) in results" :key="index" class="result-item">
-          <div class="result-header">
-            <span class="result-type">
-              <i class="fas" :class="getTypeIcon(result.type)"></i>
-              {{ getTypeName(result.type) }}
-            </span>
-            <span class="result-confidence" :class="confidenceClass(result.confidence)">
-              置信度: {{ result.confidence }}%
-            </span>
-          </div>
-          <div class="result-text">{{ result.text }}</div>
-          <div class="result-actions">
-            <button @click="copyResultText(result.text)" class="action-btn">
-              <i class="fas fa-copy"></i> 复制
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="empty-state" v-if="!currentFile && !processing && results.length === 0">
+    <div class="empty-state" v-if="!currentFile && !processing && !showQueryInput">
       <i class="fas fa-file-alt empty-icon"></i>
       <p>上传文档开始提取知识</p>
     </div>
@@ -101,6 +119,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import axios from 'axios'
+import { marked } from 'marked'
 
 const fileInput = ref(null)
 const isDragging = ref(false)
@@ -111,6 +130,14 @@ const results = ref([])
 const taskStatus = ref('')
 const processingStage = ref('')
 const cancelTokenSource = ref(null)
+const currentKbId = ref('')
+
+// 新增：查询相关变量
+const showQueryInput = ref(false)
+const queryText = ref('')
+const isQuerying = ref(false)
+const conversation = ref([])
+const queryController = ref(null)
 
 // 任务状态样式
 const taskStatusClass = computed(() => {
@@ -227,20 +254,14 @@ const processFile = async () => {
       }
     })
 
-    if (response.data && response.data.results) {
-      results.value = response.data.results
-      taskStatus.value = '处理成功'
-      progress.value = 100
+    if (response.data && response.data.kb_id) {
+      currentKbId.value = response.data.kb_id
+      localStorage.setItem('current_kb_id', response.data.kb_id)
+      taskStatus.value = '处理成功，可以开始提问'
+      // 隐藏结果，只提供提问按钮
+      results.value = []
     } else {
-      // 如果没有返回预期的结果格式，设置一个默认的结果
-      results.value = [
-        {
-          type: '文档分析',
-          confidence: 90,
-          text: '文档处理完成，但未返回详细分析结果。'
-        }
-      ]
-      taskStatus.value = '处理完成，结果有限'
+      taskStatus.value = '处理完成，但未生成知识库ID'
     }
   } catch (error) {
     console.error('处理文件时出错:', error)
@@ -251,13 +272,6 @@ const processFile = async () => {
     } else {
       taskStatus.value = '处理失败'
       showToast('处理文件时出错，请重试', 'error')
-      results.value = [
-        {
-          type: '错误',
-          confidence: 0,
-          text: `处理失败: ${error.response?.data?.detail || error.message || '未知错误'}`
-        }
-      ]
     }
   } finally {
     processing.value = false
@@ -295,39 +309,146 @@ const cancelProcess = () => {
   }
 }
 
-const clearResults = () => {
-  results.value = []
-  taskStatus.value = ''
-  progress.value = 0
-}
-
-const copyResultText = (text) => {
-  navigator.clipboard.writeText(text)
-    .then(() => showToast('已复制到剪贴板'))
-    .catch(err => showToast('复制失败: ' + err, 'error'))
-}
-
-const confidenceClass = (confidence) => {
-  if (confidence >= 80) return 'confidence-high'
-  if (confidence >= 50) return 'confidence-medium'
-  return 'confidence-low'
-}
-
-const getTypeIcon = (type) => {
-  switch (type) {
-    case 'ENTITY': return 'fa-tag'
-    case 'RELATION': return 'fa-network-wired'
-    case 'CONTEXT': return 'fa-file-alt'
-    default: return 'fa-file-alt'
+// 处理Enter键按下
+const handleEnterKey = (e) => {
+  if (!e.shiftKey) {
+    sendQuery()
   }
 }
 
-const getTypeName = (type) => {
-  switch (type) {
-    case 'ENTITY': return '实体'
-    case 'RELATION': return '关系'
-    case 'CONTEXT': return '上下文'
-    default: return '其他'
+// 格式化消息内容(支持Markdown)
+const formatMessage = (content) => {
+  try {
+    return marked(content)
+  } catch (error) {
+    return content
+  }
+}
+
+// 发送查询
+const sendQuery = async () => {
+  if (!queryText.value.trim() || isQuerying.value) return
+  
+  const query = queryText.value.trim()
+  
+  // 添加用户消息到对话中
+  conversation.value.push({
+    role: 'user',
+    content: query
+  })
+  
+  // 添加临时助手消息（等待响应）
+  const assistantMessageIndex = conversation.value.length
+  conversation.value.push({
+    role: 'assistant',
+    content: '思考中...',
+    isLoading: true
+  })
+  
+  isQuerying.value = true
+  
+  // 如果有正在进行的请求，取消它
+  if (queryController.value) {
+    queryController.value.abort()
+  }
+  
+  // 创建新的AbortController
+  queryController.value = new AbortController()
+  
+  try {
+    // 获取token
+    const token = localStorage.getItem('token')
+    
+    // 准备请求数据
+    const requestData = {
+      query: query,
+      stream: true,
+      kb_id: currentKbId.value
+    }
+    
+    // 发送请求
+    const response = await fetch('/api/v1/knowledge/query', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : ''
+      },
+      body: JSON.stringify(requestData),
+      signal: queryController.value.signal
+    })
+    
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
+    
+    // 处理流式响应
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let assistantResponse = ''
+    
+    // 更新助手消息内容
+    conversation.value[assistantMessageIndex] = {
+      role: 'assistant',
+      content: ''
+    }
+    
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      
+      const text = decoder.decode(value)
+      const events = text.split('\n\n').filter(e => e.trim() !== '')
+      
+      for (const event of events) {
+        if (event.startsWith('data: ')) {
+          const data = event.substring(6)
+          
+          if (data === '[DONE]') continue
+          
+          try {
+            const jsonData = JSON.parse(data)
+            
+            // 处理Delta内容
+            if (jsonData.choices && jsonData.choices[0].delta && jsonData.choices[0].delta.content) {
+              const content = jsonData.choices[0].delta.content
+              assistantResponse += content
+              
+              // 实时更新助手消息内容
+              conversation.value[assistantMessageIndex] = {
+                role: 'assistant',
+                content: assistantResponse
+              }
+            }
+          } catch (error) {
+            console.error('解析SSE数据时出错:', error)
+          }
+        }
+      }
+    }
+    
+    // 确保最终消息已更新
+    conversation.value[assistantMessageIndex] = {
+      role: 'assistant',
+      content: assistantResponse || '抱歉，我无法回答这个问题。'
+    }
+    
+  } catch (error) {
+    if (error.name === 'AbortError') {
+      console.log('请求被取消')
+    } else {
+      console.error('查询处理出错:', error)
+      
+      // 更新助手消息为错误状态
+      conversation.value[assistantMessageIndex] = {
+        role: 'assistant',
+        content: `查询出错: ${error.message}`,
+        error: true
+      }
+    }
+  } finally {
+    isQuerying.value = false
+    queryText.value = '' // 清空输入
+    queryController.value = null
   }
 }
 </script>
@@ -339,6 +460,8 @@ const getTypeName = (type) => {
   margin: 0 auto;
   color: #e0e0ff;
   height: 100%;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: #6366f1 #1e2130;
@@ -604,143 +727,30 @@ const getTypeName = (type) => {
   box-shadow: 0 2px 5px rgba(220, 53, 69, 0.3);
 }
 
-.clear-btn {
-  background-color: #6c757d;
+.query-link {
+  display: flex;
+  justify-content: center;
+  margin-top: 15px;
+}
+
+.query-btn {
+  background-color: #10b981;
   color: white;
-}
-
-.clear-btn:hover {
-  background-color: #5a6268;
-  transform: translateY(-2px);
-  box-shadow: 0 2px 5px rgba(108, 117, 125, 0.3);
-}
-
-.action-btn {
-  background-color: #2d3748;
-  color: #a5b4fc;
-  font-size: 0.9em;
-  min-width: auto;
-  padding: 4px 12px;
-}
-
-.action-btn:hover {
-  background-color: #4a5568;
-  color: #e0e0ff;
-}
-
-.results-section {
-  margin-top: 30px;
-}
-
-.results-section h3 {
-  color: #e0e0ff;
-  margin-bottom: 20px;
-  font-size: 1.3rem;
-  position: relative;
-  padding-bottom: 10px;
-}
-
-.results-section h3::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  width: 60px;
-  height: 3px;
-  background-color: #6366f1;
-  border-radius: 3px;
-}
-
-.results-content {
-  display: grid;
-  gap: 15px;
-}
-
-.result-item {
-  background-color: rgba(30, 33, 48, 0.7);
-  border: 1px solid rgba(99, 102, 241, 0.2);
-  border-radius: 8px;
-  padding: 15px;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
   transition: all 0.3s ease;
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 }
 
-.result-item:hover {
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
-  border-color: rgba(99, 102, 241, 0.4);
+.query-btn:hover {
+  background-color: #059669;
   transform: translateY(-2px);
-}
-
-.result-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.result-type {
-  font-weight: bold;
-  color: #6366f1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.result-confidence {
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 0.8em;
-}
-
-.confidence-high {
-  background-color: rgba(16, 185, 129, 0.2);
-  color: #10b981;
-}
-
-.confidence-medium {
-  background-color: rgba(245, 158, 11, 0.2);
-  color: #f59e0b;
-}
-
-.confidence-low {
-  background-color: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
-}
-
-.result-text {
-  color: #e0e0ff;
-  line-height: 1.6;
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
-  word-break: break-word;
-  max-height: 300px;
-  overflow-y: auto;
-  padding-right: 5px;
-  font-size: 0.95rem;
-  scrollbar-width: thin;
-  scrollbar-color: #6366f1 #1e2130;
-}
-
-.result-text::-webkit-scrollbar {
-  width: 4px;
-}
-
-.result-text::-webkit-scrollbar-track {
-  background: #1e2130;
-}
-
-.result-text::-webkit-scrollbar-thumb {
-  background-color: #6366f1;
-  border-radius: 2px;
-}
-
-.result-actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 10px;
-  gap: 8px;
+  box-shadow: 0 2px 5px rgba(16, 185, 129, 0.3);
 }
 
 .empty-state {
@@ -757,6 +767,174 @@ const getTypeName = (type) => {
   font-size: 60px;
   margin-bottom: 15px;
   color: #6366f1;
+}
+
+/* 查询输入样式 */
+.query-section {
+  margin: 20px 0;
+  padding: 20px;
+  background-color: rgba(30, 33, 48, 0.7);
+  border-radius: 12px;
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.input-container {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.query-input {
+  width: 100%;
+  padding: 15px;
+  padding-right: 60px;
+  border-radius: 8px;
+  background-color: rgba(22, 25, 35, 0.8);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  color: #e0e0ff;
+  font-size: 1rem;
+  resize: vertical;
+  min-height: 60px;
+  outline: none;
+  transition: all 0.3s ease;
+}
+
+.query-input:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+.query-button {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  background-color: #6366f1;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.query-button:hover:not(:disabled) {
+  background-color: #4c4ed9;
+  transform: translateY(-2px);
+  box-shadow: 0 2px 5px rgba(76, 78, 229, 0.3);
+}
+
+.query-button:disabled {
+  background-color: #444;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+/* 对话样式 */
+.conversation-container {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: 500px;
+  overflow-y: auto;
+  padding-right: 5px;
+  scrollbar-width: thin;
+  scrollbar-color: #6366f1 #1e2130;
+}
+
+.conversation-container::-webkit-scrollbar {
+  width: 4px;
+}
+
+.conversation-container::-webkit-scrollbar-track {
+  background: #1e2130;
+}
+
+.conversation-container::-webkit-scrollbar-thumb {
+  background-color: #6366f1;
+  border-radius: 2px;
+}
+
+.message {
+  padding: 15px;
+  border-radius: 12px;
+  animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.message.user {
+  background-color: rgba(99, 102, 241, 0.15);
+  border-left: 3px solid #6366f1;
+  align-self: flex-end;
+}
+
+.message.assistant {
+  background-color: rgba(30, 33, 48, 0.7);
+  border-left: 3px solid #10b981;
+  align-self: flex-start;
+}
+
+.message-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 0.9rem;
+}
+
+.message-role {
+  font-weight: bold;
+  color: #a5b4fc;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.message.assistant .message-role {
+  color: #10b981;
+}
+
+.message-content {
+  color: #e0e0ff;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+/* 支持Markdown样式 */
+.message-content :deep(p) {
+  margin: 0.5em 0;
+}
+
+.message-content :deep(code) {
+  background-color: rgba(30, 33, 48, 0.5);
+  padding: 2px 4px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.9em;
+}
+
+.message-content :deep(pre) {
+  background-color: rgba(30, 33, 48, 0.5);
+  padding: 10px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 1em 0;
+}
+
+.message-content :deep(pre code) {
+  background-color: transparent;
+  padding: 0;
 }
 
 /* 移动端响应式适配 */
@@ -777,8 +955,14 @@ const getTypeName = (type) => {
     font-size: 36px;
   }
   
-  .processing-section {
+  .processing-section,
+  .query-section {
     padding: 15px;
+  }
+  
+  .query-input {
+    padding: 12px;
+    font-size: 0.9rem;
   }
   
   .file-name {
@@ -790,20 +974,14 @@ const getTypeName = (type) => {
     justify-content: center;
   }
   
-  .process-btn, .cancel-btn, .clear-btn {
+  .process-btn, .cancel-btn, .query-btn {
     min-width: 120px;
     padding: 8px 12px;
     font-size: 0.9rem;
   }
   
-  .result-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  
-  .result-text {
-    font-size: 0.9rem;
-    max-height: 200px;
+  .message {
+    padding: 12px;
   }
 }
 </style> 

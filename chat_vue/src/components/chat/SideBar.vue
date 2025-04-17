@@ -12,11 +12,11 @@
       </div>
       <div 
         class="tool-item" 
-        :class="{ active: activeToolId === 'pdf-to-word', 'disabled-tool': true }"
-        @click="$emit('load-tool', 'pdf-to-word')"
+        :class="{ active: activeToolId === 'knowledge-base' }"
+        @click="$emit('load-tool', 'knowledge-base')"
       >
-        <img src="https://img.icons8.com/?size=100&id=47812&format=png&color=FFFFFF" alt="PDF to Word">
-        <span>PDF 转换器</span>
+        <img src="https://img.icons8.com/?size=100&id=443&format=png&color=FFFFFF" alt="智能文档处理">
+        <span>智能文档处理</span>
       </div>
       <div 
         class="tool-item" 

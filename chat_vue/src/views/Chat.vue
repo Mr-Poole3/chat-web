@@ -97,6 +97,12 @@ const tools = [
     icon: 'fas fa-file-pdf'
   },
   {
+    id: 'knowledge-base',
+    title: '智能文档处理',
+    description: '上传文档，智能提取关键信息，支持多种文档格式',
+    icon: 'fas fa-brain'
+  },
+  {
     id: 'essay',
     title: '论文辅助阅读',
     description: '智能辅助论文阅读和分析',
@@ -665,11 +671,6 @@ const handleLogout = () => {
 
 // 工具加载功能
 const loadTool = (toolId) => {
-  if (toolId === 'pdf-to-word') {
-    alert('开发中，敬请期待！')
-    return
-  }
-
   // 如果正在加载或有流式传输，先停止
   if (loading.value) {
     stopGeneration()
@@ -687,6 +688,11 @@ const loadTool = (toolId) => {
   const selectedToolPage = document.getElementById(`${toolId}-page`)
   if (selectedToolPage) {
     selectedToolPage.style.display = 'flex'
+  } else {
+    if (toolId === 'pdf-to-word') {
+      // 可能需要一种机制来通知 ToolPages 显示这个 slot
+      // 或者，将 KnowledgeBaseTool 移出 ToolPages，直接在此处用 v-if 控制
+    }
   }
   
   // 更新活跃工具ID

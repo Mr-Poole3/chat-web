@@ -6,8 +6,14 @@
         <i class="fas fa-bars"></i>
       </div>
       
+      <!-- 知识库工具页面 -->
+      <KnowledgeBaseTool v-if="tool.id === 'pdf-to-word'" />
+      
+      <!-- 智能文档处理工具页面 -->
+      <KnowledgeBaseTool v-else-if="tool.id === 'knowledge-base'" />
+      
       <!-- 简历生成器页面 -->
-      <iframe v-if="tool.id === 'resume'" src="http://139.224.203.197:7864/app/dashboard/resumes" class="tool-iframe"></iframe>
+      <iframe v-else-if="tool.id === 'resume'" src="http://139.224.203.197:7864/app/dashboard/resumes" class="tool-iframe"></iframe>
       
       <!-- 论文辅助阅读页面 -->
       <iframe v-else-if="tool.id === 'essay'" src="http://139.224.203.197:7863/" class="tool-iframe"></iframe>
@@ -29,6 +35,7 @@
 
 <script setup>
 import { defineProps, defineEmits } from 'vue'
+import KnowledgeBaseTool from './KnowledgeBaseTool.vue'
 
 defineProps({
   tools: {

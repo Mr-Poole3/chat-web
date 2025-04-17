@@ -1,0 +1,3 @@
+Everything could be represented as a node (concept/entity)
+For the connection between all these different nodes, there could be many edges (relationships).
+Your task is to identify as many as possible for the entities (nodes) and the relationships (edges).

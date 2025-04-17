@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request, Depends, Body
+from fastapi import FastAPI, HTTPException, Request, Depends, Body, UploadFile, File
 from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,6 +17,11 @@ import uuid
 from dotenv import load_dotenv
 import jwt
 from auth import JWT_SECRET_KEY, JWT_ALGORITHM
+from knowledge_base.core.manager import GraphManager
+from knowledge_base.core.build_graph import insert_data_2_graph
+from pathlib import Path
+from knowledge_base.core.grag import query_async
+import numpy as np
 
 from base import app
 
@@ -702,6 +707,173 @@ async def main():
         async for data in response.body_iterator:
             s += f"{data}"
             print(s)
+
+
+def convert_numpy_types(obj):
+    """将numpy类型转换为Python原生类型"""
+    if obj is None:
+        return None
+    # 处理numpy的数值类型
+    if isinstance(obj, (np.integer, np.intc, np.intp, np.int8, np.int16, np.int32, np.int64)):
+        return int(obj)
+    if isinstance(obj, (np.floating, np.float16, np.float32, np.float64)):
+        return float(obj)
+    if isinstance(obj, np.bool_):
+        return bool(obj)
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, (np.complex64, np.complex128)):
+        return complex(obj)
+    # 处理集合类型
+    if isinstance(obj, dict):
+        return {key: convert_numpy_types(value) for key, value in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [convert_numpy_types(item) for item in obj]
+    # 处理有转换方法的对象
+    if hasattr(obj, 'tolist'):
+        return obj.tolist()
+    if hasattr(obj, 'item'):
+        return obj.item()
+    # 尝试直接将对象转为JSON可序列化的格式
+    try:
+        import json
+        json.dumps(obj)
+        return obj  # 如果可以序列化，则直接返回
+    except (TypeError, OverflowError):
+        # 如果对象无法JSON序列化，转为字符串
+        return str(obj)
+
+
+@app.post("/api/v1/knowledge/process")
+async def process_document(file: UploadFile = File(...)):
+    """处理上传的文档并提取知识"""
+    temp_dir = None
+    try:
+        # 生成唯一的知识库ID
+        kb_id = str(uuid.uuid4())
+        
+        # 创建临时文件保存上传的文档
+        temp_dir = Path(os.path.abspath("temp_kb_files")) / kb_id
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        
+        file_path = temp_dir / file.filename
+        with open(file_path, "wb") as buffer:
+            content = await file.read()
+            buffer.write(content)
+        
+        # 初始化知识库管理器
+        log_id = str(uuid.uuid4())
+        manager = GraphManager(kb_id=kb_id, log_id=log_id)
+        
+        # 加载知识图谱
+        graph = manager.load_graph()
+        
+        # 处理文档并插入到图谱中
+        rag, token_count = await insert_data_2_graph(
+            graph=graph,
+            file_path=str(file_path),
+            log_id=log_id
+        )
+        
+        if not rag:
+            return {"results": [{"type": "处理结果", "confidence": 60, "text": "文档处理失败，请检查文档格式是否支持。"}]}
+        
+        # 提取关键信息
+        results = []
+        
+        try:
+            # 提取实体
+            entities = await query_async(
+                graph=graph,
+                q="提取文档中的主要实体和概念",
+                with_references=True,
+                log_id=log_id
+            )
+            
+            if entities:
+                try:
+                    results.append({
+                        "type": "实体",
+                        "confidence": 85,
+                        "text": convert_numpy_types(entities)
+                    })
+                except Exception as e:
+                    print(f"转换实体数据时出错: {str(e)}")
+                
+            # 提取关系
+            relationships = await query_async(
+                graph=graph,
+                q="提取文档中的主要关系和连接",
+                with_references=True,
+                log_id=log_id
+            )
+            
+            if relationships:
+                try:
+                    results.append({
+                        "type": "关系",
+                        "confidence": 80,
+                        "text": convert_numpy_types(relationships)
+                    })
+                except Exception as e:
+                    print(f"转换关系数据时出错: {str(e)}")
+            
+            # 提取关键内容
+            key_points = await query_async(
+                graph=graph,
+                q="提取文档的关键内容和要点",
+                with_references=True,
+                log_id=log_id
+            )
+            
+            if key_points:
+                try:
+                    results.append({
+                        "type": "要点",
+                        "confidence": 90,
+                        "text": convert_numpy_types(key_points)
+                    })
+                except Exception as e:
+                    print(f"转换要点数据时出错: {str(e)}")
+                
+        except Exception as e:
+            print(f"查询图谱时出错: {str(e)}")
+            # 如果查询失败，至少返回一个基本结果
+            results.append({
+                "type": "处理结果",
+                "confidence": 70,
+                "text": f"文档已成功处理，共{token_count}个token，但无法提取详细信息。错误信息：{str(e)}"
+            })
+        
+        # 如果没有提取到任何结果，返回一个基本消息
+        if not results:
+            results.append({
+                "type": "处理结果",
+                "confidence": 65,
+                "text": f"文档已处理，但未能提取出有效信息。共{token_count}个token。"
+            })
+            
+        # 确保整个结果数组都被转换
+        try:
+            converted_results = convert_numpy_types(results)
+        except Exception as e:
+            print(f"转换最终结果时出错: {str(e)}")
+            # 如果转换失败，返回一个简单的文本结果
+            return {"results": [{"type": "处理结果", "confidence": 60, "text": f"文档已处理，但在转换结果时出错。错误信息：{str(e)}"}]}
+            
+        return {"results": converted_results}
+        
+    except Exception as e:
+        print(f"处理文档时出错: {str(e)}")
+        return {"results": [{"type": "错误", "confidence": 0, "text": f"处理文档时出错: {str(e)}"}]}
+    finally:
+        # 确保临时文件夹被清理
+        if temp_dir and os.path.exists(temp_dir):
+            try:
+                import shutil
+                shutil.rmtree(temp_dir)
+            except Exception as e:
+                print(f"清理临时文件时出错: {str(e)}")
 
 
 if __name__ == "__main__":

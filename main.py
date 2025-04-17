@@ -1,4 +1,5 @@
 import backend
+import chat
 import auth
 import me
 from base import app

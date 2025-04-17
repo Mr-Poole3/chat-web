@@ -29,13 +29,55 @@
           <i class="fas fa-sign-out-alt"></i>
           <span>退出登录</span>
         </div>
+        <div v-if="userStore.isAuthenticated" @click="showChangePasswordModal" class="tool-item">
+          <i class="fas fa-key"></i>
+          <span>修改密码</span>
+        </div>
 
         <div v-else @click="navigateToLogin" class="tool-item">
           <i class="fas fa-sign-in-alt"></i>
           <span>登录/注册</span>
         </div>
+        </div>
+        <div v-if="isChangePasswordModalVisible" class="modal">
+        <div class="modal-content">
+          <span class="close" @click="closeChangePasswordModal">&times;</span>
+          <h2 class="modal-title">修改密码</h2>
+          <form @submit.prevent="handleChangePassword" class="change-password-form">
+            <div class="form-group">
+              <label for="currentPassword">当前密码</label>
+              <input type="password" id="currentPassword" v-model="currentPassword" required />
+            </div>
+            <div class="form-group">
+              <label for="newPassword">新密码</label>
+              <input type="password" id="newPassword" v-model="newPassword" required />
+            </div>
+            <div v-if="errorMessage" class="error-message">{{ errorMessage }}</div>
+            <button type="submit" class="submit-button">提交</button>
+          </form>
+        </div>
       </div>
     </div>
+     <!-- 修改密码模态框 -->
+    <div v-if="isChangePasswordModalVisible" class="modal">
+      <div class="modal-content">
+        <span class="close" @click="closeChangePasswordModal">&times;</span>
+        <h2 class="modal-title">修改密码</h2>
+        <form @submit.prevent="handleChangePassword" class="change-password-form">
+          <div class="form-group">
+            <label for="currentPassword">当前密码</label>
+            <input type="password" id="currentPassword" v-model="currentPassword" required />
+          </div>
+          <div class="form-group">
+            <label for="newPassword">新密码</label>
+            <input type="password" id="newPassword" v-model="newPassword" required />
+          </div>
+          <div v-if="errorMessage" class="error-message">{{ errorMessage }}</div>
+          <button type="submit" class="submit-button">提交</button>
+        </form>
+      </div>
+    </div>
+    
 
     <!-- 主内容区 -->
     <div class="main-content">
@@ -86,6 +128,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '@/stores/user'
+import axios from 'axios'
 
 const router = useRouter()
 const route = useRoute()
@@ -174,6 +217,45 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
 })
+const isChangePasswordModalVisible = ref(false)
+
+const showChangePasswordModal = () => {
+  isChangePasswordModalVisible.value = true
+}
+
+const closeChangePasswordModal = () => {
+  isChangePasswordModalVisible.value = false
+}
+
+const currentPassword = ref('')
+const newPassword = ref('')
+
+const handleChangePassword = async () => {
+  try {
+    const response = await fetch('/api/v1/auth/change-password', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${userStore.token}` // 假设你在userStore中存储了JWT token
+      },
+      body: JSON.stringify({
+        current_password: currentPassword.value,
+        new_password: newPassword.value
+      })
+    });
+    const result = await response.json();
+
+    if (response.ok) {
+      alert(result.message);
+      closeChangePasswordModal();
+    } else {
+      alert(result.detail || '密码修改失败');
+    }
+  } catch (error) {
+    console.error('Error changing password:', error);
+    alert('发生错误，请稍后再试');
+  }
+}
 </script>
 
 <style scoped>
@@ -606,6 +688,107 @@ onUnmounted(() => {
 .feature-card.disabled-feature {
   cursor: not-allowed;
   opacity: 0.7;
+}
+
+.modal {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.8);
+  z-index: 200;
+}
+
+.modal-content {
+  background-color: #1e2130;
+  padding: 30px;
+  border-radius: 10px;
+  width: 400px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  color: #e0e0ff;
+}
+
+.modal-title {
+  text-align: center;
+  margin-bottom: 20px;
+  font-size: 24px;
+}
+
+.close {
+  color: #aaa;
+  float: right;
+  font-size: 28px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.close:hover,
+.close:focus {
+  color: white;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.change-password-form {
+  display: flex;
+  flex-direction: column;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  color: #a5b4fc;
+  font-size: 14px;
+}
+
+.form-group input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  border-radius: 6px;
+  background-color: rgba(22, 25, 35, 0.7);
+  color: #e0e0ff;
+  font-size: 16px;
+  transition: all 0.3s ease;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.3);
+}
+
+.error-message {
+  color: #ef4444;
+  font-size: 14px;
+  margin-top: 10px;
+}
+
+.submit-button {
+  width: 100%;
+  padding: 12px;
+  background: linear-gradient(90deg, #4c4ed9, #6366f1);
+  border: none;
+  border-radius: 6px;
+  color: white;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: 20px;
+}
+
+.submit-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(99, 102, 241, 0.3);
 }
 
 .feature-card.disabled-feature .feature-icon img {

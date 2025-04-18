@@ -1,185 +1,160 @@
 <template>
   <div class="knowledge-base-tool">
-    <div class="tool-header">
-      <h2>智能文档处理</h2>
-      <p class="description">上传文档，智能提取关键信息，支持多种文档格式</p>
-    </div>
-
-    <!-- 上传区域，当处理中或已完成时隐藏 -->
-    <div class="upload-section" v-if="!processing && !currentKbId">
-      <div class="upload-area" 
-           @dragover.prevent 
-           @drop.prevent="handleDrop"
-           @click="triggerFileInput"
-           :class="{ 
-             'dragging': isDragging, 
-             'disabled': processing 
-           }"
-           @dragenter="!processing && (isDragging = true)"
-           @dragleave="isDragging = false">
-        <input type="file" 
-               ref="fileInput" 
-               @change="handleFileSelect" 
-               accept=".pdf,.doc,.docx,.txt,.md"
-               style="display: none">
-        <div class="upload-content">
-          <i class="fas" :class="processing ? 'fa-spinner fa-spin' : 'fa-cloud-upload-alt'"></i>
-          <p v-if="!processing">{{ currentFile ? '更换文件' : '拖拽文件到此处或点击上传' }}</p>
-          <p v-else>文件处理中，请等待...</p>
-          <p class="supported-formats">支持格式: PDF, Word, TXT, Markdown</p>
-        </div>
+    <!-- 主页面：上传区域或知识库列表 -->
+    <div v-if="!inChatMode" class="main-screen">
+      <div class="tool-header">
+        <h2>智能文档处理</h2>
+        <p class="description">上传文档，智能提取关键信息，支持多种文档格式</p>
       </div>
-    </div>
 
-    <!-- 新增：知识库列表组件，修改条件确保正确显示 -->
-    <div class="kb-list-section" v-if="!processing && (!currentKbId || (currentKbId && !showQueryInput))">
-      <div class="section-header">
-        <h3><i class="fas fa-database"></i> 我的知识库</h3>
-        <button class="refresh-btn" @click="fetchKnowledgeBaseList" :disabled="isLoadingKBs">
-          <i class="fas" :class="isLoadingKBs ? 'fa-spinner fa-spin' : 'fa-sync-alt'"></i>
-        </button>
-      </div>
-      
-      <div class="kb-list" v-if="knowledgeBaseList.length > 0">
-        <div v-for="kb in knowledgeBaseList" :key="kb.kb_id" 
-             class="kb-item"
-             :class="{'kb-selected': kb.kb_id === currentKbId}">
-          <div class="kb-details" @click="selectKnowledgeBase(kb.kb_id)">
-            <div class="kb-icon">
-              <i class="fas fa-book"></i>
-            </div>
-            <div class="kb-info">
-              <div class="kb-name">{{ kb.file_name || '未命名知识库' }}</div>
-              <div class="kb-date">{{ formatDate(kb.create_time) }}</div>
-            </div>
-          </div>
-          <div class="kb-actions">
-            <button class="kb-action-btn query" v-if="kb.kb_id === currentKbId" @click.stop="showQueryInput = true">
-              <i class="fas fa-comment-dots"></i>
-            </button>
-            <button class="kb-action-btn delete" @click.stop="confirmDeleteKB(kb.kb_id)">
-              <i class="fas fa-trash-alt"></i>
-            </button>
+      <!-- 上传区域，当正在处理时隐藏 -->
+      <div class="upload-section" v-if="!processing">
+        <div class="upload-area" 
+             @dragover.prevent 
+             @drop.prevent="handleDrop"
+             @click="triggerFileInput"
+             :class="{ 'dragging': isDragging, 'disabled': processing }"
+             @dragenter="!processing && (isDragging = true)"
+             @dragleave="isDragging = false">
+          <input type="file" 
+                 ref="fileInput" 
+                 @change="handleFileSelect" 
+                 accept=".pdf,.doc,.docx,.txt,.md"
+                 style="display: none">
+          <div class="upload-content">
+            <i class="fas" :class="processing ? 'fa-spinner fa-spin' : 'fa-cloud-upload-alt'"></i>
+            <p v-if="!processing">{{ currentFile ? '更换文件' : '拖拽文件到此处或点击上传' }}</p>
+            <p v-else>文件处理中，请等待...</p>
+            <p class="supported-formats">支持格式: PDF, Word, TXT, Markdown</p>
           </div>
         </div>
       </div>
-      
-      <div class="kb-empty-state" v-else-if="!isLoadingKBs">
-        <i class="fas fa-database"></i>
-        <p>暂无知识库，请上传文档创建</p>
-      </div>
-      
-      <div class="kb-loading" v-else>
-        <i class="fas fa-spinner fa-spin"></i>
-        <p>加载知识库中...</p>
-      </div>
-    </div>
 
-    <!-- 新增：知识库选择后的提问界面 -->
-    <div class="selected-kb-info" v-if="currentKbId && selectedKB && !showQueryInput">
-      <div class="kb-header">
-        <div class="kb-title">
-          <i class="fas fa-book"></i>
-          <h3>{{ selectedKB.file_name || '未命名知识库' }}</h3>
+      <!-- 文件信息和开始处理按钮区域 -->
+      <div class="action-section" v-if="currentFile && !processing">
+        <div class="file-info">
+          <span class="file-name">{{ currentFile.name }}</span>
+          <span class="file-size">({{ formatFileSize(currentFile.size) }})</span>
         </div>
-        <div class="kb-actions">
-          <button class="kb-back-btn" @click="resetKnowledgeBase">
-            <i class="fas fa-arrow-left"></i> 返回列表
+        <div class="action-buttons">
+          <button @click="processFile" 
+                  :disabled="processing || !currentFile" 
+                  class="process-btn">
+            <i class="fas fa-play-circle" v-if="!processing"></i>
+            <i class="fas fa-spinner fa-spin" v-else></i>
+            {{ processing ? '处理中...' : '开始处理' }}
           </button>
         </div>
       </div>
-      <p class="kb-description">您可以向此知识库提问任何问题，AI 将基于文档内容回答。</p>
-    </div>
 
-    <!-- Lottie动画加载区域，只在处理中显示 -->
-    <div class="loading-animation-container" v-if="processing">
-      <DotLottieVue 
-        style="height: 300px; width: 300px" 
-        autoplay 
-        loop 
-        src="https://lottie.host/1ad4e652-5209-4043-bb4b-b45f34842a8e/yLww9M6qdp.lottie" 
-      />
-      <p class="loading-text">{{ processingStage === 'uploading' ? '正在上传文件...' : '正在分析文档...' }}</p>
-    </div>
-
-    <div class="task-status" v-if="taskStatus && !processing">
-      <div class="status-indicator" :class="taskStatusClass">
-        <i class="fas" :class="taskStatusIcon"></i>
-        <span>{{ taskStatus }}</span>
+      <!-- 知识库列表组件 -->
+      <div class="kb-list-section">
+        <div class="section-header">
+          <h3><i class="fas fa-database"></i> 我的知识库</h3>
+          <button class="refresh-btn" @click="fetchKnowledgeBaseList" :disabled="isLoadingKBs">
+            <i class="fas" :class="isLoadingKBs ? 'fa-spinner fa-spin' : 'fa-sync-alt'"></i>
+          </button>
+        </div>
+        
+        <div class="kb-list" v-if="knowledgeBaseList.length > 0">
+          <div v-for="kb in knowledgeBaseList" :key="kb.kb_id" 
+               class="kb-item"
+               :class="{'kb-selected': kb.kb_id === currentKbId}">
+            <div class="kb-details" @click="enterChatMode(kb.kb_id)">
+              <div class="kb-icon">
+                <i class="fas fa-book"></i>
+              </div>
+              <div class="kb-info">
+                <div class="kb-name">{{ kb.file_name || '未命名知识库' }}</div>
+                <div class="kb-date">{{ formatDate(kb.create_time) }}</div>
+              </div>
+            </div>
+            <div class="kb-actions">
+              <button class="kb-action-btn delete" @click.stop="confirmDeleteKB(kb.kb_id)">
+                <i class="fas fa-trash-alt"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+        
+        <div class="kb-empty-state" v-else-if="!isLoadingKBs">
+          <i class="fas fa-database"></i>
+          <p>暂无知识库，请上传文档创建</p>
+        </div>
+        
+        <div class="kb-loading" v-else>
+          <i class="fas fa-spinner fa-spin"></i>
+          <p>加载知识库中...</p>
+        </div>
       </div>
-       
-      <div class="query-link" v-if="currentKbId && !showQueryInput">
-        <button class="query-btn" @click="showQueryInput = true">
-          <i class="fas fa-question-circle"></i> 开始提问
+
+      <!-- Lottie动画加载区域，只在处理中显示 -->
+      <div class="loading-animation-container" v-if="processing">
+        <DotLottieVue 
+          style="height: 300px; width: 300px" 
+          autoplay 
+          loop 
+          src="https://lottie.host/1ad4e652-5209-4043-bb4b-b45f34842a8e/yLww9M6qdp.lottie" 
+        />
+        <p class="loading-text">{{ processingStage === 'uploading' ? '正在上传文件...' : '正在分析文档...' }}</p>
+      </div>
+    </div>
+
+    <!-- 聊天页面 -->
+    <div v-else class="chat-screen">
+      <!-- 聊天页面头部 -->
+      <div class="chat-header">
+        <div class="header-left">
+          <button class="back-btn" @click="exitChatMode">
+            <i class="fas fa-arrow-left"></i> 返回知识库
+          </button>
+          <h3 v-if="selectedKB">{{ selectedKB.file_name || '未命名知识库' }}</h3>
+        </div>
+        <button class="upload-new-btn" @click="startNewUpload">
+          <i class="fas fa-plus"></i> 新建知识库
         </button>
       </div>
-    </div>
 
-    <!-- 修改提问界面条件，确保可以正确显示 -->
-    <div class="query-section" v-if="showQueryInput && currentKbId">
-      <div class="header-with-back">
-        <button class="back-btn" @click="showQueryInput = false">
-          <i class="fas fa-arrow-left"></i> 返回
-        </button>
-        <h3 v-if="selectedKB">{{ selectedKB.file_name || '未命名知识库' }}</h3>
+      <!-- 文档描述提示 -->
+      <div class="document-prompt">
+        <p>您可以向此知识库提问任何问题，AI 将基于文档内容回答。</p>
       </div>
       
-      <div class="input-container">
+      <!-- 对话区域 -->
+      <div class="conversation-container" ref="conversationContainer">
+        <div 
+          v-for="(message, index) in conversation" 
+          :key="index" 
+          class="message"
+          :class="[message.role]"
+        >
+          <div class="message-content" v-html="formatMessage(message.content)"></div>
+        </div>
+      </div>
+      
+      <!-- 输入区域，固定在底部 -->
+      <div class="chat-input-container">
         <textarea 
-          class="query-input" 
+          class="chat-input" 
           v-model="queryText" 
           placeholder="请输入您的问题..."
           @keydown.enter.prevent="handleEnterKey"
           :disabled="isQuerying"
-          rows="3"
+          rows="2"
         ></textarea>
         <button 
-          class="query-button" 
+          class="send-button" 
           @click="sendQuery" 
           :disabled="!queryText.trim() || isQuerying">
           <i class="fas" :class="isQuerying ? 'fa-spinner fa-spin' : 'fa-paper-plane'"></i>
-          {{ isQuerying ? '查询中...' : '提问' }}
         </button>
       </div>
-    </div>
-
-    <!-- 对话结果区域 -->
-    <div class="conversation-container" v-if="conversation.length > 0">
-      <div 
-        v-for="(message, index) in conversation" 
-        :key="index" 
-        class="message"
-        :class="[message.role]"
-      >
-        <div class="message-content" v-html="formatMessage(message.content)"></div>
-      </div>
-    </div>
-
-    <div class="action-section" v-if="currentFile && !showQueryInput && !processing">
-      <div class="file-info">
-        <span class="file-name">{{ currentFile.name }}</span>
-        <span class="file-size">({{ formatFileSize(currentFile.size) }})</span>
-      </div>
-      <div class="action-buttons">
-        <button @click="processFile" 
-                :disabled="processing || !currentFile" 
-                class="process-btn">
-          <i class="fas fa-play-circle" v-if="!processing"></i>
-          <i class="fas fa-spinner fa-spin" v-else></i>
-          {{ processing ? '处理中...' : '开始处理' }}
-        </button>
-      </div>
-    </div>
-
-    <div class="empty-state" v-if="!currentFile && !processing && !showQueryInput && !currentKbId">
-      <i class="fas fa-file-alt empty-icon"></i>
-      <p>上传文档开始提取知识</p>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import axios from 'axios'
 import { marked } from 'marked'
 import { DotLottieVue } from '@lottiefiles/dotlottie-vue'
@@ -193,18 +168,57 @@ const taskStatus = ref('')
 const processingStage = ref('')
 const cancelTokenSource = ref(null)
 const currentKbId = ref('')
+const conversationContainer = ref(null)
 
-// 新增：知识库列表相关变量
+// 新增：聊天模式控制
+const inChatMode = ref(false)
+
+// 知识库列表相关变量
 const knowledgeBaseList = ref([])
 const isLoadingKBs = ref(false)
 const selectedKB = ref(null)
 
 // 查询相关变量
-const showQueryInput = ref(false)
 const queryText = ref('')
 const isQuerying = ref(false)
 const conversation = ref([])
 const queryController = ref(null)
+
+// 进入聊天模式
+const enterChatMode = (kbId) => {
+  // 设置当前知识库ID
+  currentKbId.value = kbId
+  localStorage.setItem('current_kb_id', kbId)
+  
+  // 获取知识库详情
+  const kb = knowledgeBaseList.value.find(kb => kb.kb_id === kbId)
+  if (kb) {
+    selectedKB.value = kb
+  } else {
+    fetchKnowledgeBaseDetails(kbId)
+  }
+  
+  // 清空对话记录
+  conversation.value = []
+  
+  // 切换到聊天模式
+  inChatMode.value = true
+}
+
+// 退出聊天模式
+const exitChatMode = () => {
+  inChatMode.value = false
+  // 保留当前知识库ID，以便用户可以再次进入
+}
+
+// 自动滚动到最新消息
+watch(conversation, () => {
+  nextTick(() => {
+    if (conversationContainer.value) {
+      conversationContainer.value.scrollTop = conversationContainer.value.scrollHeight
+    }
+  })
+}, { deep: true })
 
 // 任务状态样式
 const taskStatusClass = computed(() => {
@@ -228,9 +242,7 @@ onMounted(() => {
   
   // 检查是否有缓存的知识库ID
   const cachedKbId = localStorage.getItem('current_kb_id')
-  const userId = getUserId()
   if (cachedKbId) {
-    // 添加用户ID校验，确保知识库属于当前用户
     currentKbId.value = cachedKbId
     fetchKnowledgeBaseDetails(cachedKbId)
   }
@@ -290,8 +302,12 @@ const fetchKnowledgeBaseList = async () => {
         const exists = knowledgeBaseList.value.some(kb => kb.kb_id === currentKbId.value)
         if (!exists) {
           // 如果当前知识库不属于该用户，重置选择
-          resetKnowledgeBase()
+          currentKbId.value = ''
+          selectedKB.value = null
           console.warn('当前知识库不属于该用户，已重置选择')
+        } else if (selectedKB.value === null) {
+          // 如果在列表中但没有详情，获取详情
+          fetchKnowledgeBaseDetails(currentKbId.value)
         }
       }
     }
@@ -303,54 +319,24 @@ const fetchKnowledgeBaseList = async () => {
   }
 }
 
-// 选择知识库
-const selectKnowledgeBase = (kbId) => {
-  console.log('选择知识库:', kbId)
-  currentKbId.value = kbId
-  localStorage.setItem('current_kb_id', kbId)
-  fetchKnowledgeBaseDetails(kbId)
-  
-  // 选择知识库后重置对话
-  conversation.value = []
-}
-
 // 获取知识库详情
 const fetchKnowledgeBaseDetails = (kbId) => {
   const kb = knowledgeBaseList.value.find(kb => kb.kb_id === kbId)
   if (kb) {
     selectedKB.value = kb
-    taskStatus.value = '知识库已选择，可以开始提问'
-    
-    // 选择知识库后增加延迟自动显示提问输入框
-    setTimeout(() => {
-      showQueryInput.value = true
-    }, 500)
   } else {
     // 如果在列表中找不到，重新获取知识库列表
     fetchKnowledgeBaseList().then(() => {
       const kb = knowledgeBaseList.value.find(kb => kb.kb_id === kbId)
       if (kb) {
         selectedKB.value = kb
-        taskStatus.value = '知识库已选择，可以开始提问'
-        setTimeout(() => {
-          showQueryInput.value = true
-        }, 500)
       } else {
         // 如果仍找不到，可能是知识库已被删除
-        resetKnowledgeBase()
-        taskStatus.value = '知识库不存在，请选择其他知识库'
+        currentKbId.value = ''
+        selectedKB.value = null
       }
     })
   }
-}
-
-// 重置知识库选择
-const resetKnowledgeBase = () => {
-  currentKbId.value = ''
-  selectedKB.value = null
-  conversation.value = []
-  showQueryInput.value = false
-  localStorage.removeItem('current_kb_id')
 }
 
 // 确认删除知识库
@@ -381,7 +367,9 @@ const deleteKnowledgeBase = async (kbId) => {
     
     // 如果删除的是当前选中的知识库，重置选择
     if (currentKbId.value === kbId) {
-      resetKnowledgeBase()
+      currentKbId.value = ''
+      selectedKB.value = null
+      inChatMode.value = false // 如果在聊天模式，退出聊天
     }
     
     showToast('知识库已成功删除', 'success')
@@ -479,6 +467,7 @@ const processFile = async () => {
     // 获取token
     const token = localStorage.getItem('token')
     
+    // 使用正确的上传接口路径
     const response = await axios.post('/knowledge/process', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
@@ -496,10 +485,18 @@ const processFile = async () => {
     if (response.data && response.data.kb_id) {
       currentKbId.value = response.data.kb_id
       localStorage.setItem('current_kb_id', response.data.kb_id)
-      taskStatus.value = '处理成功，可以开始提问'
-      showQueryInput.value = true  // 自动显示提问输入框
+      
       // 处理成功后刷新知识库列表
-      fetchKnowledgeBaseList()
+      await fetchKnowledgeBaseList()
+      
+      // 获取这个新知识库的详情
+      fetchKnowledgeBaseDetails(response.data.kb_id)
+      
+      // 直接进入聊天模式
+      enterChatMode(response.data.kb_id)
+      
+      // 重置文件选择
+      currentFile.value = null
     } else {
       taskStatus.value = '处理完成，但未生成知识库ID'
     }
@@ -556,144 +553,95 @@ const sendQuery = async () => {
   })
   
   isQuerying.value = true
-  
-  // 如果有正在进行的请求，取消它
-  if (queryController.value) {
-    queryController.value.abort()
-  }
-  
-  // 创建新的AbortController
-  queryController.value = new AbortController()
+  queryText.value = '' // 清空输入
   
   try {
     // 获取token和用户ID
     const token = localStorage.getItem('token')
     const userId = getUserId()
     
-    // 准备请求数据
+    // 准备请求数据 - 根据GraphRAG知识库查询需要的参数
     const requestData = {
-      query: query,
-      stream: true,
       kb_id: currentKbId.value,
-      user_id: userId // 添加用户ID确保查询权限
+      query: query,
+      user_id: userId || 'default'
     }
     
-    console.log('发送查询请求，知识库ID:', currentKbId.value)
+    console.log('发送知识库查询，知识库ID:', currentKbId.value)
     
-    // 发送请求
-    const response = await fetch('/api/v1/knowledge/query', {
-      method: 'POST',
+    // 发送请求到正确的知识库查询接口
+    const response = await axios.post('/knowledge/query', requestData, {
       headers: {
         'Content-Type': 'application/json',
         'Authorization': token ? `Bearer ${token}` : '',
-        'X-User-ID': userId || '' // 在请求头中也传递用户ID
-      },
-      body: JSON.stringify(requestData),
-      signal: queryController.value.signal
+        'X-User-ID': userId || ''
+      }
     })
     
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`)
-    }
+    console.log('知识库查询响应:', response.data)
     
-    // 处理流式响应
-    const reader = response.body.getReader()
-    const decoder = new TextDecoder()
-    let assistantResponse = ''
-    
-    // 更新助手消息内容
-    conversation.value[assistantMessageIndex] = {
-      role: 'assistant',
-      content: ''
-    }
-    
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
+    if (response.data) {
+      // 直接使用知识库返回的答案，GraphRAG已经结合LLM生成了答案
+      let answer = response.data.answer || '抱歉，我无法回答这个问题。'
       
-      const text = decoder.decode(value)
-      const events = text.split('\n\n').filter(e => e.trim() !== '')
-      
-      for (const event of events) {
-        if (event.startsWith('data: ')) {
-          const data = event.substring(6)
-          
-          if (data === '[DONE]') continue
-          
-          try {
-            const jsonData = JSON.parse(data)
-            
-            // 处理Delta内容
-            if (jsonData.choices && jsonData.choices[0].delta && jsonData.choices[0].delta.content) {
-              const content = jsonData.choices[0].delta.content
-              assistantResponse += content
-              
-              // 实时更新助手消息内容
-              conversation.value[assistantMessageIndex] = {
-                role: 'assistant',
-                content: assistantResponse
-              }
-            }
-          } catch (error) {
-            console.error('解析SSE数据时出错:', error)
-          }
-        }
+      // 更新助手消息
+      conversation.value[assistantMessageIndex] = {
+        role: 'assistant',
+        content: answer
       }
-    }
-    
-    // 确保最终消息已更新
-    conversation.value[assistantMessageIndex] = {
-      role: 'assistant',
-      content: assistantResponse || '抱歉，我无法回答这个问题。'
+    } else {
+      throw new Error('未获得有效回答')
     }
     
   } catch (error) {
-    if (error.name === 'AbortError') {
-      console.log('请求被取消')
-    } else {
-      console.error('查询处理出错:', error)
-      
-      // 更新助手消息为错误状态
-      conversation.value[assistantMessageIndex] = {
-        role: 'assistant',
-        content: `查询出错: ${error.message}`,
-        error: true
-      }
+    console.error('查询处理出错:', error)
+    
+    // 更新助手消息为错误状态
+    conversation.value[assistantMessageIndex] = {
+      role: 'assistant',
+      content: `抱歉，查询出错: ${error.message}`,
+      error: true
     }
   } finally {
     isQuerying.value = false
-    queryText.value = '' // 清空输入
-    queryController.value = null
   }
+}
+
+// 新增：开始新的上传
+const startNewUpload = () => {
+  // 重置所有状态
+  currentFile.value = null
+  processing.value = false
+  currentKbId.value = ''
+  selectedKB.value = null
+  conversation.value = []
+  
+  // 退出聊天模式，返回上传界面
+  inChatMode.value = false
 }
 </script>
 
 <style scoped>
 .knowledge-base-tool {
-  padding: 20px;
-  max-width: 900px;
-  margin: 0 auto;
-  color: #e0e0ff;
-  height: 100%;
+  width: 100%;
+  height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  background-color: #161923;
+}
+
+/* 主页面样式 */
+.main-screen {
+  flex: 1;
+  padding: 20px;
+  height: 100%;
   overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: #6366f1 #1e2130;
-}
-
-/* 滚动条样式 */
-.knowledge-base-tool::-webkit-scrollbar {
-  width: 6px;
-}
-
-.knowledge-base-tool::-webkit-scrollbar-track {
-  background: #1e2130;
-}
-
-.knowledge-base-tool::-webkit-scrollbar-thumb {
-  background-color: #6366f1;
-  border-radius: 3px;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 .tool-header {
@@ -755,61 +703,6 @@ const sendQuery = async () => {
   margin-top: 10px;
 }
 
-/* 加载动画容器 */
-.loading-animation-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  margin: 20px 0;
-}
-
-.loading-text {
-  color: #a5b4fc;
-  font-size: 1.2rem;
-  margin-top: 10px;
-  text-align: center;
-}
-
-.task-status {
-  padding: 10px 15px;
-  border-radius: 8px;
-  margin-bottom: 20px;
-  text-align: center;
-}
-
-.status-indicator {
-  display: inline-flex;
-  align-items: center;
-  padding: 6px 12px;
-  border-radius: 20px;
-  font-size: 0.9rem;
-}
-
-.status-indicator i {
-  margin-right: 8px;
-}
-
-.status-success {
-  background-color: rgba(16, 185, 129, 0.2);
-  color: #10b981;
-}
-
-.status-error {
-  background-color: rgba(239, 68, 68, 0.2);
-  color: #ef4444;
-}
-
-.status-processing {
-  background-color: rgba(59, 130, 246, 0.2);
-  color: #3b82f6;
-}
-
-.status-info {
-  background-color: rgba(99, 102, 241, 0.2);
-  color: #6366f1;
-}
-
 .action-section {
   margin: 20px 0;
   padding: 20px;
@@ -845,6 +738,7 @@ const sendQuery = async () => {
   flex-wrap: wrap;
   gap: 10px;
   margin-top: 15px;
+  justify-content: center;
 }
 
 .process-btn, .cancel-btn, .clear-btn, .action-btn {
@@ -878,265 +772,20 @@ const sendQuery = async () => {
   opacity: 0.7;
 }
 
-.cancel-btn {
-  background-color: #dc3545;
-  color: white;
-}
-
-.cancel-btn:hover {
-  background-color: #c82333;
-  transform: translateY(-2px);
-  box-shadow: 0 2px 5px rgba(220, 53, 69, 0.3);
-}
-
-.query-link {
-  display: flex;
-  justify-content: center;
-  margin-top: 15px;
-}
-
-.query-btn {
-  background-color: #10b981;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  padding: 8px 16px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 500;
-  transition: all 0.3s ease;
-}
-
-.query-btn:hover {
-  background-color: #059669;
-  transform: translateY(-2px);
-  box-shadow: 0 2px 5px rgba(16, 185, 129, 0.3);
-}
-
-.empty-state {
+/* 加载动画容器 */
+.loading-animation-container {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 40px 20px;
-  color: #a5b4fc;
-  opacity: 0.7;
-}
-
-.empty-icon {
-  font-size: 60px;
-  margin-bottom: 15px;
-  color: #6366f1;
-}
-
-/* 查询输入样式 */
-.query-section {
   margin: 20px 0;
-  padding: 20px;
-  background-color: rgba(30, 33, 48, 0.7);
-  border-radius: 12px;
-  border: 1px solid rgba(99, 102, 241, 0.2);
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
-.input-container {
-  display: flex;
-  flex-direction: column;
-  position: relative;
-}
-
-.query-input {
-  width: 100%;
-  padding: 15px;
-  padding-right: 60px;
-  border-radius: 8px;
-  background-color: rgba(22, 25, 35, 0.8);
-  border: 1px solid rgba(99, 102, 241, 0.3);
-  color: #e0e0ff;
-  font-size: 1rem;
-  resize: vertical;
-  min-height: 60px;
-  outline: none;
-  transition: all 0.3s ease;
-}
-
-.query-input:focus {
-  border-color: #6366f1;
-  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
-}
-
-.query-button {
-  position: absolute;
-  bottom: 10px;
-  right: 10px;
-  background-color: #6366f1;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  padding: 8px 16px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 500;
-  transition: all 0.3s ease;
-}
-
-.query-button:hover:not(:disabled) {
-  background-color: #4c4ed9;
-  transform: translateY(-2px);
-  box-shadow: 0 2px 5px rgba(76, 78, 229, 0.3);
-}
-
-.query-button:disabled {
-  background-color: #444;
-  cursor: not-allowed;
-  opacity: 0.7;
-}
-
-/* 对话样式 - 更新为Chrome风格 */
-.conversation-container {
-  margin-top: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  max-height: 500px;
-  overflow-y: auto;
-  padding-right: 5px;
-  scrollbar-width: thin;
-  scrollbar-color: #6366f1 #1e2130;
-}
-
-.conversation-container::-webkit-scrollbar {
-  width: 4px;
-}
-
-.conversation-container::-webkit-scrollbar-track {
-  background: #1e2130;
-}
-
-.conversation-container::-webkit-scrollbar-thumb {
-  background-color: #6366f1;
-  border-radius: 2px;
-}
-
-.message {
-  padding: 12px 16px;
-  border-radius: 8px;
-  max-width: 80%;
-  animation: fadeIn 0.3s ease;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-  margin-bottom: 8px;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.message.user {
-  background-color: rgba(99, 102, 241, 0.15);
-  align-self: flex-end;
-  border-radius: 18px 18px 0 18px;
-  color: #e0e0ff;
-}
-
-.message.assistant {
-  background-color: rgba(30, 33, 48, 0.7);
-  align-self: flex-start;
-  border-radius: 18px 18px 18px 0;
-  color: #e0e0ff;
-}
-
-.message-content {
-  color: #e0e0ff;
-  line-height: 1.5;
-  font-size: 0.95rem;
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
-  word-break: break-word;
-}
-
-/* 支持Markdown样式 */
-.message-content :deep(p) {
-  margin: 0.5em 0;
-}
-
-.message-content :deep(code) {
-  background-color: rgba(30, 33, 48, 0.5);
-  padding: 2px 4px;
-  border-radius: 4px;
-  font-family: monospace;
-  font-size: 0.9em;
-}
-
-.message-content :deep(pre) {
-  background-color: rgba(30, 33, 48, 0.5);
-  padding: 10px;
-  border-radius: 6px;
-  overflow-x: auto;
-  margin: 1em 0;
-}
-
-.message-content :deep(pre code) {
-  background-color: transparent;
-  padding: 0;
-}
-
-/* 移动端响应式适配 */
-@media (max-width: 768px) {
-  .knowledge-base-tool {
-    padding: 15px 10px;
-  }
-  
-  .tool-header h2 {
-    font-size: 1.5rem;
-  }
-  
-  .upload-area {
-    padding: 25px 15px;
-  }
-  
-  .upload-content i {
-    font-size: 36px;
-  }
-  
-  .action-section,
-  .query-section {
-    padding: 15px;
-  }
-  
-  .query-input {
-    padding: 12px;
-    font-size: 0.9rem;
-  }
-  
-  .file-name {
-    font-size: 0.9rem;
-    max-width: 200px;
-  }
-  
-  .action-buttons {
-    justify-content: center;
-  }
-  
-  .process-btn, .query-btn {
-    min-width: 120px;
-    padding: 8px 12px;
-    font-size: 0.9rem;
-  }
-  
-  .message {
-    padding: 10px;
-    max-width: 90%;
-  }
-  
-  .loading-animation-container DotLottieVue {
-    height: 200px !important;
-    width: 200px !important;
-  }
+.loading-text {
+  color: #a5b4fc;
+  font-size: 1.2rem;
+  margin-top: 10px;
+  text-align: center;
 }
 
 /* 新增：知识库列表样式 */
@@ -1188,21 +837,10 @@ const sendQuery = async () => {
   gap: 10px;
   max-height: 300px;
   overflow-y: auto;
-  scrollbar-width: thin;
-  scrollbar-color: #6366f1 #1e2130;
-}
-
-.kb-list::-webkit-scrollbar {
-  width: 4px;
-}
-
-.kb-list::-webkit-scrollbar-track {
-  background: #1e2130;
-}
-
-.kb-list::-webkit-scrollbar-thumb {
-  background-color: #6366f1;
-  border-radius: 2px;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 .kb-item {
@@ -1253,8 +891,8 @@ const sendQuery = async () => {
   text-overflow: ellipsis;
   overflow: hidden;
   display: -webkit-box;
-  -webkit-line-clamp: 1; /* For modern browsers */
-  line-clamp: 1; /* Standard property */
+  -webkit-line-clamp: 1;
+  line-clamp: 1;
   -webkit-box-orient: vertical;
 }
 
@@ -1301,88 +939,63 @@ const sendQuery = async () => {
   display: block;
 }
 
-.kb-loading i {
-  color: #6366f1;
-}
-
-/* 选中的知识库信息样式 */
-.selected-kb-info {
-  margin: 20px 0;
-  padding: 20px;
-  background-color: rgba(30, 33, 48, 0.7);
-  border-radius: 12px;
-  border: 1px solid rgba(99, 102, 241, 0.2);
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-}
-
-.kb-header {
+/* 聊天页面样式 */
+.chat-screen {
+  width: 100%;
+  height: 100%;
   display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: #161923;
+}
+
+.chat-header {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
-  align-items: center;
-  margin-bottom: 15px;
+  padding: 15px 20px;
+  background-color: rgba(22, 25, 35, 0.9);
+  border-bottom: 1px solid rgba(99, 102, 241, 0.2);
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 
-.kb-title {
+.header-left {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 15px;
+  flex: 1;
 }
 
-.kb-title i {
-  color: #6366f1;
-  font-size: 1.2rem;
-}
-
-.kb-title h3 {
-  color: #e0e0ff;
-  font-size: 1.2rem;
-  font-weight: 500;
-  margin: 0;
-}
-
-.kb-description {
-  color: #a5b4fc;
-  font-size: 0.95rem;
-  line-height: 1.5;
-}
-
-.kb-back-btn {
-  background-color: rgba(99, 102, 241, 0.1);
-  color: #6366f1;
-  border: 1px solid rgba(99, 102, 241, 0.3);
+.upload-new-btn {
+  background-color: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
   border-radius: 6px;
-  padding: 6px 12px;
+  padding: 8px 16px;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: 0.9rem;
   transition: all 0.3s ease;
 }
 
-.kb-back-btn:hover {
-  background-color: rgba(99, 102, 241, 0.2);
+.upload-new-btn:hover {
+  background-color: rgba(16, 185, 129, 0.2);
+  transform: translateY(-2px);
 }
 
-.kb-item.kb-selected {
-  background-color: rgba(99, 102, 241, 0.2);
-  border-left: 3px solid #10b981;
-}
-
-.kb-action-btn.query {
-  color: #10b981;
-}
-
-.kb-action-btn.query:hover {
-  background-color: rgba(16, 185, 129, 0.1);
-}
-
-/* 返回按钮样式 */
-.header-with-back {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  margin-bottom: 15px;
+.chat-header h3 {
+  margin: 0 0 0 15px;
+  flex: 1;
+  font-size: 1.2rem;
+  color: #e0e0ff;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .back-btn {
@@ -1390,27 +1003,258 @@ const sendQuery = async () => {
   color: #6366f1;
   border: 1px solid rgba(99, 102, 241, 0.3);
   border-radius: 6px;
-  padding: 6px 12px;
+  padding: 8px 16px;
   cursor: pointer;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   font-size: 0.9rem;
   transition: all 0.3s ease;
 }
 
 .back-btn:hover {
   background-color: rgba(99, 102, 241, 0.2);
+  transform: translateX(-2px);
 }
 
-.header-with-back h3 {
-  color: #e0e0ff;
-  font-size: 1.2rem;
-  font-weight: 500;
-  margin: 0;
+.document-prompt {
+  padding: 12px 20px;
+  background-color: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+  border-bottom: 1px solid rgba(16, 185, 129, 0.2);
+  font-size: 0.9rem;
+}
+
+.conversation-container {
   flex: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.message {
+  display: flex;
+  flex-direction: column;
+  max-width: 85%;
+  animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.message.user {
+  align-self: flex-end;
+}
+
+.message.assistant {
+  align-self: flex-start;
+}
+
+.message-content {
+  padding: 12px 16px;
+  border-radius: 12px;
+  color: #e0e0ff;
+  line-height: 1.5;
+  font-size: 0.95rem;
+  position: relative;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+.message.user .message-content {
+  background-color: #6366f1;
+  border-radius: 12px 12px 0 12px;
+  box-shadow: 0 2px 4px rgba(99, 102, 241, 0.2);
+}
+
+.message.assistant .message-content {
+  background-color: rgba(22, 25, 35, 0.8);
+  border-radius: 12px 12px 12px 0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.chat-input-container {
+  padding: 15px 20px;
+  background-color: rgba(22, 25, 35, 0.9);
+  border-top: 1px solid rgba(99, 102, 241, 0.2);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  position: sticky;
+  bottom: 0;
+}
+
+.chat-input {
+  flex: 1;
+  padding: 12px 15px;
+  border-radius: 24px;
+  background-color: rgba(30, 33, 48, 0.7);
+  border: 1px solid rgba(99, 102, 241, 0.3);
+  color: #e0e0ff;
+  font-size: 1rem;
+  resize: none;
+  min-height: 24px;
+  max-height: 120px;
+  outline: none;
+  transition: all 0.3s ease;
+}
+
+.chat-input:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+
+.chat-input::placeholder {
+  color: rgba(165, 180, 252, 0.5);
+}
+
+.send-button {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background-color: #6366f1;
+  color: white;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  flex-shrink: 0;
+}
+
+.send-button:hover:not(:disabled) {
+  background-color: #4c4ed9;
+  transform: translateY(-2px);
+  box-shadow: 0 2px 5px rgba(76, 78, 229, 0.3);
+}
+
+.send-button:disabled {
+  background-color: rgba(99, 102, 241, 0.3);
+  cursor: not-allowed;
+}
+
+/* Markdown 样式优化 */
+.message-content :deep(p) {
+  margin: 0.5em 0;
+}
+
+.message-content :deep(code) {
+  background-color: rgba(0, 0, 0, 0.2);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.9em;
+}
+
+.message-content :deep(pre) {
+  background-color: rgba(0, 0, 0, 0.2);
+  padding: 12px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 1em 0;
+}
+
+.message-content :deep(pre code) {
+  background-color: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+
+.message-content :deep(a) {
+  color: #a5b4fc;
+  text-decoration: none;
+  border-bottom: 1px dashed #a5b4fc;
+}
+
+.message-content :deep(a:hover) {
+  color: #6366f1;
+  border-bottom-style: solid;
+}
+
+.message-content :deep(ul), 
+.message-content :deep(ol) {
+  padding-left: 1.5em;
+  margin: 0.5em 0;
+}
+
+.message-content :deep(li) {
+  margin: 0.3em 0;
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .main-screen {
+    padding: 15px 10px;
+  }
+  
+  .tool-header h2 {
+    font-size: 1.5rem;
+  }
+  
+  .upload-area {
+    padding: 25px 15px;
+  }
+  
+  .upload-content i {
+    font-size: 36px;
+  }
+  
+  .action-section,
+  .kb-list-section {
+    padding: 15px;
+  }
+  
+  .process-btn {
+    min-width: 120px;
+    padding: 8px 12px;
+    font-size: 0.9rem;
+  }
+  
+  .chat-header {
+    padding: 10px 15px;
+  }
+  
+  .conversation-container {
+    padding: 15px 10px;
+  }
+  
+  .message {
+    max-width: 90%;
+  }
+  
+  .message-content {
+    padding: 10px 14px;
+    font-size: 0.9rem;
+  }
+  
+  .chat-input-container {
+    padding: 10px 15px;
+  }
+  
+  .chat-input {
+    padding: 10px;
+    font-size: 0.9rem;
+  }
+  
+  .send-button {
+    width: 36px;
+    height: 36px;
+  }
 }
 </style> 

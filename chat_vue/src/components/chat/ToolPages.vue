@@ -9,7 +9,7 @@
       <!-- 知识库工具页面 -->
       <KnowledgeBaseTool v-if="tool.id === 'pdf-to-word'" />
       
-      <!-- 智能文档处理工具页面 -->
+      <!-- AI知识库工具页面 -->
       <KnowledgeBaseTool v-else-if="tool.id === 'knowledge-base'" />
       
       <!-- 简历生成器页面 -->

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request, Depends, Body, UploadFile, File
+from fastapi import FastAPI, HTTPException, Request, Depends, Body, UploadFile, File, Form
 from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -750,10 +750,21 @@ def convert_numpy_types(obj):
 
 
 @app.post("/api/v1/knowledge/process")
-async def process_document(file: UploadFile = File(...)):
+async def process_document(request: Request, file: UploadFile = File(...), user_id: Optional[str] = Form(None)):
     """处理上传的文档并提取知识"""
     temp_dir = None
     try:
+        # 获取用户ID，优先使用表单中提供的，其次从请求头获取
+        if not user_id:
+            user_id = request.headers.get("X-User-ID")
+        
+        # 如果没有用户ID，返回错误
+        if not user_id:
+            print("未提供用户ID，无法处理文档")
+            return {"results": [{"type": "错误", "confidence": 0, "text": "未提供用户ID，请重新登录后再试"}], "kb_id": None}
+        
+        print(f"处理用户 {user_id} 上传的文档: {file.filename}")
+        
         # 生成唯一的知识库ID
         kb_id = str(uuid.uuid4())
         
@@ -791,16 +802,17 @@ async def process_document(file: UploadFile = File(...)):
             # 确保知识库目录存在
             kb_path = Path(os.path.abspath("cache_graph")) / kb_id
             if os.path.exists(kb_path):
-                # 创建元数据文件
+                # 创建元数据文件，添加用户ID
                 metadata = {
                     "file_name": original_filename,
                     "upload_time": time.time(),
-                    "token_count": token_count
+                    "token_count": token_count,
+                    "user_id": user_id  # 保存用户ID到元数据
                 }
                 meta_file = kb_path / "metadata.json"
                 with open(meta_file, "w", encoding="utf-8") as f:
                     json.dump(metadata, f, ensure_ascii=False, indent=2)
-                print(f"保存知识库元数据成功: {kb_id}")
+                print(f"保存知识库元数据成功: {kb_id}, 用户ID: {user_id}")
             else:
                 print(f"知识库目录不存在，无法保存元数据: {kb_id}")
         except Exception as e:
@@ -922,12 +934,24 @@ class KnowledgeBaseInfo(BaseModel):
 
 
 @app.get("/api/v1/knowledge/list")
-async def list_knowledge_bases():
+async def list_knowledge_bases(request: Request, user_id: Optional[str] = None):
     """获取所有可用的知识库列表"""
     try:
         # 获取知识库目录下的所有文件夹
         kb_list = []
         kb_dir = Path(os.path.abspath("cache_graph"))
+        
+        # 从请求头获取用户ID
+        if not user_id:
+            user_id = request.headers.get("X-User-ID")
+            print(f"从请求头获取用户ID: {user_id}")
+        
+        # 如果没有获取到用户ID，返回空列表
+        if not user_id:
+            print("未提供用户ID，返回空列表")
+            return {"kb_list": []}
+            
+        print(f"获取用户ID: {user_id} 的知识库列表")
         
         if os.path.exists(kb_dir):
             for kb_id in os.listdir(kb_dir):
@@ -936,30 +960,38 @@ async def list_knowledge_bases():
                     # 获取文件夹创建时间
                     create_time = os.path.getctime(kb_path)
                     
-                    # 尝试获取文件名
+                    # 尝试获取文件名和用户ID
                     file_name = None
+                    kb_user_id = None
                     try:
-                        # 从知识库元数据中获取文件名
+                        # 从知识库元数据中获取文件名和用户ID
                         meta_file = kb_path / "metadata.json"
                         if os.path.exists(meta_file):
                             with open(meta_file, "r", encoding="utf-8") as f:
                                 metadata = json.load(f)
                                 if "file_name" in metadata:
                                     file_name = metadata["file_name"]
-                    except Exception:
-                        pass
+                                if "user_id" in metadata:
+                                    kb_user_id = metadata["user_id"]
+                    except Exception as e:
+                        print(f"读取知识库元数据出错: {str(e)}")
                     
-                    # 添加到列表
-                    kb_list.append(
-                        KnowledgeBaseInfo(
-                            kb_id=kb_id,
-                            create_time=create_time,
-                            file_name=file_name
+                    # 只添加属于当前用户的知识库
+                    if kb_user_id == user_id:
+                        print(f"找到用户 {user_id} 的知识库: {kb_id}")
+                        kb_list.append(
+                            KnowledgeBaseInfo(
+                                kb_id=kb_id,
+                                create_time=create_time,
+                                file_name=file_name
+                            )
                         )
-                    )
+                    else:
+                        print(f"知识库 {kb_id} 不属于用户 {user_id}, 属于用户 {kb_user_id}")
         
         # 按创建时间降序排序
         kb_list.sort(key=lambda x: x.create_time, reverse=True)
+        print(f"返回用户 {user_id} 的知识库列表，共 {len(kb_list)} 个")
         return {"kb_list": kb_list}
         
     except Exception as e:
@@ -968,9 +1000,17 @@ async def list_knowledge_bases():
 
 
 @app.delete("/api/v1/knowledge/delete/{kb_id}")
-async def delete_knowledge_base(kb_id: str):
+async def delete_knowledge_base(request: Request, kb_id: str, user_id: Optional[str] = None):
     """删除指定的知识库"""
     try:
+        # 从请求参数或请求头中获取用户ID
+        if not user_id:
+            user_id = request.headers.get("X-User-ID")
+        
+        if not user_id:
+            print("未提供用户ID，无法删除知识库")
+            raise HTTPException(status_code=401, detail="未提供用户ID，请重新登录后再试")
+            
         # 验证知识库ID有效性
         if not kb_id or not re.match(r'^[a-zA-Z0-9\-]+$', kb_id):
             raise HTTPException(status_code=400, detail="无效的知识库ID")
@@ -979,6 +1019,28 @@ async def delete_knowledge_base(kb_id: str):
         kb_path = Path(os.path.abspath("cache_graph")) / kb_id
         if not os.path.exists(kb_path):
             raise HTTPException(status_code=404, detail="知识库不存在")
+        
+        # 验证用户是否有权限删除此知识库
+        kb_owner = None
+        try:
+            meta_file = kb_path / "metadata.json"
+            if os.path.exists(meta_file):
+                with open(meta_file, "r", encoding="utf-8") as f:
+                    metadata = json.load(f)
+                    if "user_id" in metadata:
+                        kb_owner = metadata["user_id"]
+            
+            # 如果知识库属于其他用户，拒绝删除
+            if kb_owner and kb_owner != user_id:
+                print(f"用户 {user_id} 尝试删除用户 {kb_owner} 的知识库 {kb_id}")
+                raise HTTPException(status_code=403, detail="您没有权限删除此知识库")
+        except HTTPException:
+            raise
+        except Exception as e:
+            print(f"验证知识库所有者时出错: {str(e)}")
+            # 如果无法验证所有者，默认允许删除（不阻塞功能）
+        
+        print(f"用户 {user_id} 删除知识库 {kb_id}")
         
         # 释放图资源
         try:
@@ -1012,11 +1074,41 @@ async def delete_knowledge_base(kb_id: str):
 async def query_knowledge(request: Request, query_request: KnowledgeQueryRequest):
     """基于知识库查询，如果知识库中没有相关信息，则使用LLM回答"""
     try:
+        # 获取用户ID
+        user_id = request.headers.get("X-User-ID")
+        if not user_id:
+            print("未提供用户ID，无法查询知识库")
+            raise HTTPException(status_code=401, detail="未提供用户ID，请重新登录后再试")
+        
         # 获取知识库ID，如果未提供则尝试获取最近的一个
         kb_id = query_request.kb_id
         if not kb_id:
             # 可以从会话或配置中获取默认知识库ID
             kb_id = str(uuid.uuid4())  # 临时ID用于测试
+        
+        # 验证用户是否有权限查询此知识库
+        kb_path = Path(os.path.abspath("cache_graph")) / kb_id
+        if os.path.exists(kb_path):
+            kb_owner = None
+            try:
+                meta_file = kb_path / "metadata.json"
+                if os.path.exists(meta_file):
+                    with open(meta_file, "r", encoding="utf-8") as f:
+                        metadata = json.load(f)
+                        if "user_id" in metadata:
+                            kb_owner = metadata["user_id"]
+                
+                # 如果知识库属于其他用户，拒绝查询
+                if kb_owner and kb_owner != user_id:
+                    print(f"用户 {user_id} 尝试查询用户 {kb_owner} 的知识库 {kb_id}")
+                    raise HTTPException(status_code=403, detail="您没有权限查询此知识库")
+            except HTTPException:
+                raise
+            except Exception as e:
+                print(f"验证知识库所有者时出错: {str(e)}")
+                # 继续处理，因为这不是关键错误
+        
+        print(f"用户 {user_id} 查询知识库 {kb_id}: {query_request.query}")
         
         log_id = str(uuid.uuid4())
         response_queue = queue.Queue()
@@ -1042,125 +1134,94 @@ async def query_knowledge(request: Request, query_request: KnowledgeQueryRequest
                 if query_result:
                     print(f"知识库查询结果类型: {type(query_result)}")
                     
-                    # 提取实体信息
-                    entities_info = ""
-                    relations_info = ""
-                    chunks_info = ""
-                    
+                    # 转换结果为字符串
                     try:
-                        # 如果有entities属性
-                        if hasattr(query_result, 'entities') and query_result.entities:
-                            entities = query_result.entities
-                            for entity in entities:
-                                if hasattr(entity, 'name') and hasattr(entity, 'description'):
-                                    entities_info += f"- {entity.name}: {entity.description}\n"
-                        
-                        # 如果有relations属性
-                        if hasattr(query_result, 'relations') and query_result.relations:
-                            relations = query_result.relations
-                            for relation in relations:
-                                if hasattr(relation, 'source') and hasattr(relation, 'target') and hasattr(relation, 'description'):
-                                    relations_info += f"- {relation.source} 和 {relation.target} 的关系: {relation.description}\n"
-                        
-                        # 如果有chunks属性
-                        if hasattr(query_result, 'chunks') and query_result.chunks:
-                            chunks = query_result.chunks
-                            for chunk in chunks:
-                                if hasattr(chunk, 'content'):
-                                    chunks_info += f"{chunk.content}\n"
-                        
-                        # 从context属性中提取
-                        if hasattr(query_result, 'context'):
-                            context = query_result.context
-                            if hasattr(context, 'entities'):
-                                for entity_tuple in context.entities:
-                                    entity = entity_tuple[0]  # 第一个元素是实体对象
-                                    if hasattr(entity, 'name') and hasattr(entity, 'description'):
-                                        entities_info += f"- {entity.name}: {entity.description}\n"
-                            
-                            if hasattr(context, 'relations'):
-                                for relation_tuple in context.relations:
-                                    relation = relation_tuple[0]  # 第一个元素是关系对象
-                                    if hasattr(relation, 'source') and hasattr(relation, 'target') and hasattr(relation, 'description'):
-                                        relations_info += f"- {relation.source} 和 {relation.target} 的关系: {relation.description}\n"
-                            
-                            if hasattr(context, 'chunks'):
-                                for chunk_tuple in context.chunks:
-                                    chunk = chunk_tuple[0]  # 第一个元素是块对象
-                                    if hasattr(chunk, 'content'):
-                                        chunks_info += f"{chunk.content}\n"
-                        
-                        # 组合所有信息
-                        knowledge_context = ""
-                        
-                        if chunks_info.strip():
-                            knowledge_context += "原文内容:\n" + chunks_info + "\n\n"
-                        
-                        if entities_info.strip():
-                            knowledge_context += "提取的实体:\n" + entities_info + "\n\n"
-                        
-                        if relations_info.strip():
-                            knowledge_context += "提取的关系:\n" + relations_info + "\n\n"
-                        
-                        # 如果没有提取到任何信息但query_result是字符串，直接使用
-                        if not knowledge_context and isinstance(query_result, str):
-                            knowledge_context = query_result
-                        
-                        # 如果query_result有response属性且为字符串，添加到context
-                        if hasattr(query_result, 'response') and isinstance(query_result.response, str):
-                            knowledge_context += "生成的回答:\n" + query_result.response
-                        
-                        print(f"从知识库提取的上下文: {knowledge_context[:300]}...")
-                        
+                        knowledge_context = convert_numpy_types(query_result)
                     except Exception as e:
-                        print(f"处理知识库返回结果时出错: {str(e)}")
-                        # 尝试直接将查询结果转换为字符串作为后备方案
-                        try:
-                            knowledge_context = str(query_result)
-                            print(f"转换为字符串的知识库结果: {knowledge_context[:300]}...")
-                        except:
-                            print("无法将查询结果转换为字符串")
-                
+                        print(f"转换查询结果时出错: {str(e)}")
+                        # 如果转换失败，尝试简单字符串化
+                        knowledge_context = str(query_result)
             except Exception as e:
-                print(f"知识库查询出错: {str(e)}")
+                print(f"查询知识库时出错: {str(e)}")
+                # 在这里可以选择是否向用户显示错误信息
         
-        # 固定使用DeepSeek-V3模型
-        model = "DeepSeek-V3"
-        
-        # 构建带有提示的查询内容，加入知识库上下文
-        prompt = ""
-        if knowledge_context:
-            prompt = f"""用户问题: {query_request.query}
-            
-根据以下从文档中提取的信息回答：
------
-{knowledge_context}
------
+        # 使用LLM回答问题
+        prompt_template = """
+作为一个智能助手，请基于以下信息回答问题。
 
-请直接回答用户问题，不要引用上述信息来源，不要提及你在使用文档信息，用自然的方式回答，就像这些知识是你已知的一样。请保持简洁明了，直接给出答案。如果文档中没有相关信息，请诚实地说明你无法回答。"""
+如果信息中包含答案，请直接回答。
+如果信息不足以回答问题，请礼貌地表示无法基于当前信息回答，并建议用户尝试不同的问题或上传更多相关文档。
+不要编造信息，不要声明自己是AI助手，直接回答即可。
+
+相关信息：
+{context}
+
+用户问题：{query}
+"""
+        
+        # 如果有知识库结果，则使用知识库结果构建上下文
+        if knowledge_context:
+            prompt = prompt_template.format(
+                context=knowledge_context,
+                query=query_request.query
+            )
         else:
-            prompt = f"用户问题: {query_request.query}\n\n如果你知道答案，请直接回答。"
+            # 如果没有知识库结果，直接告知用户
+            prompt = prompt_template.format(
+                context="没有找到相关信息。",
+                query=query_request.query
+            )
         
-        print(f"发送到LLM的提示: {prompt[:500]}...")
+        # 使用不同的模型API生成回答
+        model = "DeepSeek-V3"  # 默认模型
         
-        # 始终使用DeepSeek模型生成回答，即使有知识库结果
-        t_openai = asyncio.create_task(fetch_deepseek_response(
-            model, 
-            prompt, 
-            query_request.max_tokens, 
-            query_request.temperature, 
-            response_queue,
-            request
-        ))
+        # 发送请求到LLM服务
+        async def generate_response():
+            try:
+                # 根据模型类型选择不同的API
+                if "gpt" in model.lower() or "azure" in model.lower():
+                    await fetch_azure_response(
+                        model=model,
+                        prompt=prompt,
+                        max_tokens=query_request.max_tokens,
+                        temperature=query_request.temperature,
+                        response_queue=response_queue,
+                        request=request
+                    )
+                else:
+                    await fetch_deepseek_response(
+                        model=model,
+                        prompt=prompt,
+                        max_tokens=query_request.max_tokens,
+                        temperature=query_request.temperature,
+                        response_queue=response_queue,
+                        request=request
+                    )
+            except Exception as e:
+                print(f"生成回答时出错: {str(e)}")
+                # 将错误消息放入队列
+                response_queue.put({"error": str(e)})
+            finally:
+                # 标记生成完成
+                response_queue.put(None)
         
+        # 启动异步任务生成回答
+        asyncio.create_task(generate_response())
+        
+        # 流式返回生成的内容
         return StreamingResponse(
             stream_from_queue(response_queue),
             media_type="text/event-stream"
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"知识库查询处理出错: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"内部服务器错误: {str(e)}")
+        print(f"查询知识库时出错: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"内部服务器错误: {str(e)}"}
+        )
 
 
 if __name__ == "__main__":

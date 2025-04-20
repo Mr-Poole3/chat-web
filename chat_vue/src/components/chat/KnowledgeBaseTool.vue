@@ -3,7 +3,7 @@
     <!-- 主页面：上传区域或知识库列表 -->
     <div v-if="!inChatMode" class="main-screen">
       <div class="tool-header">
-        <h2>智能文档处理</h2>
+        <h2>AI知识库</h2>
         <p class="description">上传文档，智能提取关键信息，支持多种文档格式</p>
       </div>
 
@@ -158,7 +158,9 @@ import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import axios from 'axios'
 import { marked } from 'marked'
 import { DotLottieVue } from '@lottiefiles/dotlottie-vue'
+import { useUserStore } from '@/stores/user' // 导入用户store
 
+const userStore = useUserStore() // 使用userStore
 const fileInput = ref(null)
 const isDragging = ref(false)
 const currentFile = ref(null)
@@ -250,7 +252,12 @@ onMounted(() => {
 
 // 获取当前用户ID
 const getUserId = () => {
-  // 从localStorage获取用户信息
+  // 首先从userStore获取用户ID
+  if (userStore.userId) {
+    return userStore.userId
+  }
+  
+  // 从localStorage获取用户信息作为备选
   const userInfo = localStorage.getItem('userInfo')
   if (userInfo) {
     try {
@@ -285,16 +292,27 @@ const fetchKnowledgeBaseList = async () => {
     const token = localStorage.getItem('token')
     const userId = getUserId()
     
+    if (!userId) {
+      console.error('无法获取用户ID，无法加载知识库列表')
+      showToast('用户未登录或ID无效，请重新登录', 'error')
+      return
+    }
+    
+    console.log('正在获取用户ID为', userId, '的知识库列表')
+    
     // 添加用户ID参数，确保只获取当前用户的知识库
-    const response = await axios.get(`/knowledge/list${userId ? `?user_id=${userId}` : ''}`, {
+    const response = await axios.get(`/knowledge/list?user_id=${userId}`, {
       headers: {
         'Authorization': token ? `Bearer ${token}` : '',
-        'X-User-ID': userId || '' // 在请求头中也传递用户ID
+        'X-User-ID': userId // 在请求头中也传递用户ID
       }
     })
     
     if (response.data && response.data.kb_list) {
-      knowledgeBaseList.value = response.data.kb_list
+      // 只保留当前用户的知识库（二次过滤，防止后端未正确筛选）
+      knowledgeBaseList.value = response.data.kb_list.filter(kb => 
+        !kb.user_id || kb.user_id === userId
+      )
       console.log('知识库列表获取成功:', knowledgeBaseList.value.length)
       
       // 如果存在当前选中的知识库，验证它是否在列表中
@@ -352,10 +370,15 @@ const deleteKnowledgeBase = async (kbId) => {
     const token = localStorage.getItem('token')
     const userId = getUserId()
     
+    if (!userId) {
+      showToast('用户未登录或ID无效，请重新登录', 'error')
+      return
+    }
+    
     await axios.delete(`/knowledge/delete/${kbId}`, {
       headers: {
         'Authorization': token ? `Bearer ${token}` : '',
-        'X-User-ID': userId || '' // 添加用户ID确保权限校验
+        'X-User-ID': userId // 添加用户ID确保权限校验
       },
       params: {
         user_id: userId // 在参数中也传递用户ID
@@ -447,6 +470,12 @@ const showToast = (message, type = 'info') => {
 const processFile = async () => {
   if (!currentFile.value || processing.value) return
 
+  const userId = getUserId()
+  if (!userId) {
+    showToast('用户未登录或ID无效，请重新登录', 'error')
+    return
+  }
+
   processing.value = true
   processingStage.value = 'uploading'
   taskStatus.value = '文档处理中...'
@@ -455,10 +484,7 @@ const processFile = async () => {
   formData.append('file', currentFile.value)
   
   // 添加用户ID到表单数据
-  const userId = getUserId()
-  if (userId) {
-    formData.append('user_id', userId)
-  }
+  formData.append('user_id', userId)
 
   // 创建取消令牌
   cancelTokenSource.value = axios.CancelToken.source()
@@ -472,7 +498,7 @@ const processFile = async () => {
       headers: {
         'Content-Type': 'multipart/form-data',
         'Authorization': token ? `Bearer ${token}` : '',
-        'X-User-ID': userId || '' // 添加用户ID到请求头
+        'X-User-ID': userId // 添加用户ID到请求头
       },
       cancelToken: cancelTokenSource.value.token,
       onUploadProgress: (progressEvent) => {
@@ -537,6 +563,12 @@ const sendQuery = async () => {
   if (!queryText.value.trim() || isQuerying.value) return
   
   const query = queryText.value.trim()
+  const userId = getUserId()
+  
+  if (!userId) {
+    showToast('用户未登录或ID无效，请重新登录', 'error')
+    return
+  }
   
   // 添加用户消息到对话中
   conversation.value.push({
@@ -548,7 +580,7 @@ const sendQuery = async () => {
   const assistantMessageIndex = conversation.value.length
   conversation.value.push({
     role: 'assistant',
-    content: '思考中...',
+    content: '',
     isLoading: true
   })
   
@@ -558,39 +590,75 @@ const sendQuery = async () => {
   try {
     // 获取token和用户ID
     const token = localStorage.getItem('token')
-    const userId = getUserId()
     
-    // 准备请求数据 - 根据GraphRAG知识库查询需要的参数
+    // 准备请求数据
     const requestData = {
       kb_id: currentKbId.value,
       query: query,
-      user_id: userId || 'default'
+      user_id: userId
     }
     
-    console.log('发送知识库查询，知识库ID:', currentKbId.value)
+    console.log('发送知识库查询，知识库ID:', currentKbId.value, '用户ID:', userId)
     
-    // 发送请求到正确的知识库查询接口
-    const response = await axios.post('/knowledge/query', requestData, {
+    // 发送请求到知识库查询接口
+    const response = await fetch('/api/v1/knowledge/query', {
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': token ? `Bearer ${token}` : '',
-        'X-User-ID': userId || ''
-      }
+        'X-User-ID': userId
+      },
+      body: JSON.stringify(requestData)
     })
     
-    console.log('知识库查询响应:', response.data)
+    // 检查响应状态
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`)
+    }
     
-    if (response.data) {
-      // 直接使用知识库返回的答案，GraphRAG已经结合LLM生成了答案
-      let answer = response.data.answer || '抱歉，我无法回答这个问题。'
+    // 获取响应流
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder()
+    let accumulatedContent = ''
+    
+    // 处理流式响应
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
       
-      // 更新助手消息
-      conversation.value[assistantMessageIndex] = {
-        role: 'assistant',
-        content: answer
+      // 解码响应数据
+      const chunk = decoder.decode(value)
+      const lines = chunk.split('\n')
+      
+      // 处理每一行数据
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const jsonData = JSON.parse(line.slice(6))
+            if (jsonData.choices && jsonData.choices[0].delta.content) {
+              // 获取新的内容片段
+              const content = jsonData.choices[0].delta.content
+              accumulatedContent += content
+              
+              // 更新助手消息
+              conversation.value[assistantMessageIndex] = {
+                role: 'assistant',
+                content: accumulatedContent,
+                isLoading: true
+              }
+            }
+          } catch (e) {
+            console.error('解析响应数据出错:', e)
+          }
+        }
       }
-    } else {
-      throw new Error('未获得有效回答')
+    }
+    
+    // 完成响应后更新消息状态
+    conversation.value[assistantMessageIndex] = {
+      role: 'assistant',
+      content: accumulatedContent || '抱歉，我无法回答这个问题。',
+      isLoading: false
     }
     
   } catch (error) {
@@ -600,7 +668,8 @@ const sendQuery = async () => {
     conversation.value[assistantMessageIndex] = {
       role: 'assistant',
       content: `抱歉，查询出错: ${error.message}`,
-      error: true
+      error: true,
+      isLoading: false
     }
   } finally {
     isQuerying.value = false
@@ -1066,7 +1135,6 @@ const startNewUpload = () => {
 
 .message-content {
   padding: 12px 16px;
-  border-radius: 12px;
   color: #e0e0ff;
   line-height: 1.5;
   font-size: 0.95rem;
@@ -1077,15 +1145,17 @@ const startNewUpload = () => {
 }
 
 .message.user .message-content {
-  background-color: #6366f1;
+  background-color: #4a4d8f;
+  border: 1px solid #8183f7;
   border-radius: 12px 12px 0 12px;
-  box-shadow: 0 2px 4px rgba(99, 102, 241, 0.2);
+  box-shadow: 0 1px 2px rgba(99, 102, 241, 0.1);
 }
 
 .message.assistant .message-content {
-  background-color: rgba(22, 25, 35, 0.8);
+  background-color: rgba(22, 25, 35, 0.9);
+  border: 1px dashed rgba(99, 102, 241, 0.3);
   border-radius: 12px 12px 12px 0;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
 .chat-input-container {

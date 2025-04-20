@@ -91,14 +91,8 @@ const availableModels = [
 // 工具列表
 const tools = [
   {
-    id: 'pdf-to-word',
-    title: 'PDF 转换器',
-    description: '把你的PDF转为任意格式的文档',
-    icon: 'fas fa-file-pdf'
-  },
-  {
     id: 'knowledge-base',
-    title: '智能文档处理',
+    title: 'AI知识库',
     description: '上传文档，智能提取关键信息，支持多种文档格式',
     icon: 'fas fa-brain'
   },

@@ -144,15 +144,9 @@ const features = [
     description: '与智能 AI 助手进行自然对话，获取帮助和建议。'
   },
   {
-    id: 'pdf-to-word',
-    imageUrl: 'https://img.icons8.com/?size=100&id=47812&format=png&color=FFFFFF',
-    title: 'PDF 转换器',
-    description: '将 PDF 文件转换为其他格式，支持多种文档类型。'
-  },
-  {
     id: 'knowledge-base',
     imageUrl: 'https://img.icons8.com/?size=100&id=tF3u8JzZEZYC&format=png&color=FFFFFF',
-    title: '智能文档处理',
+    title: 'AI知识库',
     description: '上传文档，智能提取关键信息，支持多种文档格式。'
   },
   {

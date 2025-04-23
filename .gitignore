@@ -4,4 +4,15 @@
 .chat_vue/dist/
 .chat_vue/.vscode/
 .env
+__pycache__/
+.lib/__pycache__/
+.knowledge_base/__pycache__/
 
+knowledge_base/__pycache__/__init__.cpython-311.pyc
+knowledge_base/__pycache__/base_knowledge_base.cpython-311.pyc
+knowledge_base/__pycache__/base_knowledge_base.cpython-311.pyc
+knowledge_base/__pycache__/base_knowledge_base.cpython-311.pyc
+knowledge_base/__pycache__/base_knowledge_base.cpython-311.pyc
+knowledge_base/__pycache__/base_knowledge_base.cpython-311.pyc
+knowledge_base/__pycache__/base_knowledge_base.cpython-311.pyc
+knowledge_base/__pycache__/base_knowledge_base.cpython-311.pyc

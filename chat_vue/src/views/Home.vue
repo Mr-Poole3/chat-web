@@ -145,7 +145,7 @@ const features = [
   },
   {
     id: 'knowledge-base',
-    imageUrl: 'https://img.icons8.com/?size=100&id=tF3u8JzZEZYC&format=png&color=FFFFFF',
+    imageUrl: 'https://img.icons8.com/?size=100&id=443&format=png&color=FFFFFF',
     title: 'AI知识库',
     description: '上传文档，智能提取关键信息，支持多种文档格式。'
   },

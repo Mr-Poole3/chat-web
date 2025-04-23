@@ -12,43 +12,57 @@
       </div>
       <div 
         class="tool-item" 
-        :class="{ active: activeToolId === 'knowledge-base' }"
-        @click="$emit('load-tool', 'knowledge-base')"
+        :class="{ active: activeToolId === 'knowledge-base', 'disabled-tool': !isVip }"
+        @click="handleToolClick('knowledge-base')"
       >
         <img src="https://img.icons8.com/?size=100&id=443&format=png&color=FFFFFF" alt="AI知识库">
         <span>AI知识库</span>
+        <div v-if="!isVip" class="vip-tag">VIP</div>
       </div>
       <div 
         class="tool-item" 
-        :class="{ active: activeToolId === 'essay' }" 
-        @click="$emit('load-tool', 'essay')"
+        :class="{ active: activeToolId === 'essay', 'disabled-tool': !isVip }" 
+        @click="handleToolClick('essay')"
       >
         <img src="https://img.icons8.com/?size=100&id=42763&format=png&color=FFFFFF" alt="论文">
         <span>论文辅助阅读</span>
+        <div v-if="!isVip" class="vip-tag">VIP</div>
       </div>
       <div 
         class="tool-item" 
-        :class="{ active: activeToolId === 'ppt' }"
-        @click="$emit('load-tool', 'ppt')"
+        :class="{ active: activeToolId === 'ppt', 'disabled-tool': !isVip }"
+        @click="handleToolClick('ppt')"
       >
         <img src="https://img.icons8.com/?size=100&id=saSupsgVcmJe&format=png&color=FFFFFF" alt="PPT"/>
         <span>Open Manus</span>
+        <div v-if="!isVip" class="vip-tag">VIP</div>
       </div>
       <div 
         class="tool-item" 
-        :class="{ active: activeToolId === 'resume' }" 
-        @click="$emit('load-tool', 'resume')"
+        :class="{ active: activeToolId === 'resume', 'disabled-tool': !isVip }" 
+        @click="handleToolClick('resume')"
       >
         <img src="https://img.icons8.com/?size=100&id=23877&format=png&color=FFFFFF" alt="简历">
         <span>简历生成器</span>
+        <div v-if="!isVip" class="vip-tag">VIP</div>
       </div>
       <div 
         class="tool-item" 
-        :class="{ active: activeToolId === 'flowchart' }" 
-        @click="$emit('load-tool', 'flowchart')"
+        :class="{ active: activeToolId === 'flowchart', 'disabled-tool': !isVip }" 
+        @click="handleToolClick('flowchart')"
       >
         <img src="https://img.icons8.com/?size=100&id=1763&format=png&color=FFFFFF" alt="流程图">
         <span>流程图生成器</span>
+        <div v-if="!isVip" class="vip-tag">VIP</div>
+      </div>
+      
+      <!-- 订阅入口 -->
+      <div 
+        class="tool-item subscription-item" 
+        @click="navigateTo('/subscription')"
+      >
+        <i class="fas fa-crown" style="color: gold; margin-right: 10px;"></i>
+        <span>{{ isVip ? '会员中心' : '开通VIP会员' }}</span>
       </div>
     </div>
     <div class="sidebar-content" v-if="activeToolId === 'chat'">
@@ -66,7 +80,6 @@
 
 <script setup>
 import { useRouter } from 'vue-router'
-import { defineProps, defineEmits } from 'vue'
 import ChatHistory from './ChatHistory.vue'
 
 const router = useRouter()
@@ -87,6 +100,10 @@ const props = defineProps({
   currentChatId: {
     type: String,
     default: null
+  },
+  isVip: {
+    type: Boolean,
+    default: false
   }
 })
 
@@ -102,6 +119,14 @@ const handleSelectChat = (chatId) => {
 
 const handleDeleteChat = (chatId) => {
   emit('delete-chat', chatId)
+}
+
+const handleToolClick = (toolId) => {
+  if (!props.isVip) {
+    navigateTo('/subscription')
+    return
+  }
+  emit('load-tool', toolId)
 }
 
 const navigateTo = (path) => {
@@ -138,6 +163,7 @@ const navigateTo = (path) => {
   padding: 10px;
   cursor: pointer;
   transition: background-color 0.3s ease;
+  position: relative;
 }
 
 .tool-item:hover {
@@ -168,6 +194,27 @@ const navigateTo = (path) => {
   flex-direction: column;
 }
 
+.vip-tag {
+  position: absolute;
+  right: 10px;
+  background-color: #f59e0b;
+  color: white;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: bold;
+}
+
+.subscription-item {
+  margin-top: 20px;
+  background-color: rgba(245, 158, 11, 0.2);
+  border-radius: 8px;
+}
+
+.subscription-item:hover {
+  background-color: rgba(245, 158, 11, 0.3);
+}
+
 /* 移动端适配 */
 @media (max-width: 768px) {
   .sidebar {
@@ -196,7 +243,7 @@ const navigateTo = (path) => {
 }
 
 .tool-item.disabled-tool {
-  cursor: not-allowed;
+  cursor: pointer;
 }
 /* --- END: Disabled Tool Styles --- */
 </style> 

@@ -6,3 +6,58 @@ pm2 start pnpm -- start
 
 nohup python3 main.py > main.log 2>&1
 sudo lsof -i :8000
+
+
+-- 为users表添加role字段（如果不存在）
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS role ENUM('user', 'admin') DEFAULT 'user';
+
+-- 创建订阅计划表（如果不存在）
+CREATE TABLE IF NOT EXISTS subscription_plans (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+    duration_days INT NOT NULL,
+    price DECIMAL(10, 2) NOT NULL,
+    description TEXT,
+    features TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- 创建用户订阅表（如果不存在）
+CREATE TABLE IF NOT EXISTS user_subscriptions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    plan_id INT NOT NULL,
+    start_date TIMESTAMP NOT NULL,
+    end_date TIMESTAMP NOT NULL,
+    status ENUM('active', 'expired', 'cancelled') DEFAULT 'active',
+    payment_id VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (plan_id) REFERENCES subscription_plans(id) ON DELETE RESTRICT
+);
+
+-- 创建订阅相关索引
+CREATE INDEX IF NOT EXISTS idx_user_subscriptions_user_id ON user_subscriptions(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_subscriptions_status ON user_subscriptions(status);
+CREATE INDEX IF NOT EXISTS idx_user_subscriptions_end_date ON user_subscriptions(end_date);
+
+-- 插入基础订阅计划数据（如果表为空）
+INSERT INTO subscription_plans (name, duration_days, price, description, features)
+SELECT * FROM (
+    SELECT '周卡VIP', 7, 19.99, '7天高级会员，畅享所有AI模型', '{"all_models": true, "all_tools": true, "all_pages": true}' UNION ALL
+    SELECT '月卡VIP', 30, 59.99, '30天高级会员，畅享所有AI模型，优惠更多', '{"all_models": true, "all_tools": true, "all_pages": true}' UNION ALL
+    SELECT '年卡VIP', 365, 499.99, '365天高级会员，超值体验，享受所有功能', '{"all_models": true, "all_tools": true, "all_pages": true}'
+) AS temp
+WHERE NOT EXISTS (SELECT 1 FROM subscription_plans LIMIT 1);
+
+-- 添加role字段（兼容旧版本MySQL）
+ALTER TABLE users
+ADD COLUMN role ENUM('user', 'admin') DEFAULT 'user';
+
+-- 创建索引（兼容旧版本）
+CREATE INDEX idx_user_subscriptions_user_id ON user_subscriptions(user_id);
+CREATE INDEX idx_user_subscriptions_status ON user_subscriptions(status);
+CREATE INDEX idx_user_subscriptions_end_date ON user_subscriptions(end_date);

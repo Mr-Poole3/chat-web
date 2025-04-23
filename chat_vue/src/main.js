@@ -4,6 +4,8 @@ import App from './App.vue'
 import router from './router'
 import axios from 'axios'
 import { DotLottieVue } from '@lottiefiles/dotlottie-vue'
+import Toast from 'vue-toastification'
+import 'vue-toastification/dist/index.css'
 
 // 使用环境变量配置API基础URL
 axios.defaults.baseURL = import.meta.env.VITE_API_BASE_URL || '/api/v1'
@@ -36,8 +38,28 @@ import '@fortawesome/fontawesome-free/css/all.min.css'
 
 const app = createApp(App)
 
+// Toast 配置
+const toastOptions = {
+  position: 'top-right',
+  timeout: 3000,
+  closeOnClick: true,
+  pauseOnFocusLoss: true,
+  pauseOnHover: true,
+  draggable: true,
+  draggablePercent: 0.6,
+  showCloseButtonOnHover: false,
+  hideProgressBar: false,
+  closeButton: 'button',
+  icon: true,
+  rtl: false,
+  transition: 'Vue-Toastification__bounce',
+  maxToasts: 5,
+  newestOnTop: true
+}
+
 app.use(createPinia())
 app.use(router)
+app.use(Toast, toastOptions)
 app.component('DotLottieVue', DotLottieVue)
 
 app.mount('#app')

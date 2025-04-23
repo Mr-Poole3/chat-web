@@ -9,6 +9,7 @@
       :activeToolId="activeToolId"
       :chatHistory="chatHistory"
       :currentChatId="currentChatId"
+      :isVip="isVip"
       @load-chat-tool="loadChatTool"
       @load-tool="loadTool"
       @new-chat="createNewChat"
@@ -25,10 +26,54 @@
           :availableModels="availableModels"
           :loading="loading"
           :username="username"
+          :isVip="isVip"
           @logout="handleLogout"
           @change-model="selectedModel = $event"
           @toggle-sidebar="toggleSidebar"
+          @open-vip-plan="openVipPlanModal"
         />
+
+        <!-- 新用户VIP欢迎卡片 -->
+        <div v-if="showWelcomeCard" class="welcome-card">
+          <div class="welcome-content">
+            <div class="welcome-header">
+              <i class="fas fa-gift"></i>
+              <h2>欢迎使用AI助手！</h2>
+              <button class="close-button" @click="closeWelcomeCard">
+                <i class="fas fa-times"></i>
+              </button>
+            </div>
+            <div class="welcome-body">
+              <p class="welcome-text">恭喜您获得3天VIP体验资格！</p>
+              <div class="vip-features">
+                <div class="feature-item">
+                  <i class="fas fa-robot"></i>
+                  <span>使用所有AI模型</span>
+                </div>
+                <div class="feature-item">
+                  <i class="fas fa-bolt"></i>
+                  <span>优先响应速度</span>
+                </div>
+                <div class="feature-item">
+                  <i class="fas fa-brain"></i>
+                  <span>更长的上下文记忆</span>
+                </div>
+                <div class="feature-item">
+                  <i class="fas fa-tools"></i>
+                  <span>使用所有高级工具</span>
+                </div>
+              </div>
+              <div class="welcome-actions">
+                <button class="action-button primary" @click="startTutorial">
+                  开始使用
+                </button>
+                <button class="action-button secondary" @click="openVipPlanModal">
+                  了解会员权益
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <!-- 聊天内容区 -->
         <ChatMessages 
@@ -51,6 +96,13 @@
       
       <!-- 工具页面（初始隐藏） -->
       <ToolPages :tools="tools" @toggle-sidebar="toggleSidebar" />
+
+      <!-- VIP计划弹窗 -->
+      <VipPlanCard 
+        :show="showVipPlanModal"
+        @close="closeVipPlanModal"
+        @subscribe="handleSubscribe"
+      />
     </div>
   </div>
 </template>
@@ -75,18 +127,53 @@ import ChatHeader from '@/components/chat/ChatHeader.vue'
 import ChatMessages from '@/components/chat/ChatMessages.vue'
 import InputComponent from '@/components/chat/InputComponent.vue'
 import ToolPages from '@/components/chat/ToolPages.vue'
+import VipPlanCard from '@/components/VipPlanCard.vue'
 
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
 
 // 可选模型列表
-const availableModels = [
+const availableModels = ref([
   { id: 'DeepSeek-R1', name: 'DeepSeek-R1' },
   { id: 'DeepSeek-V3', name: 'DeepSeek-V3' },
-  { id: 'gpt-4o-mini', name: 'GPT-4o-mini' },
-  { id: 'gpt-4o', name: 'GPT-4o' },
-]
+])
+
+// 用户VIP状态
+const isVip = ref(false)
+// VIP计划弹窗状态
+const showVipPlanModal = ref(false)
+
+// 添加获取用户订阅状态的方法
+const fetchUserSubscriptionStatus = async () => {
+  try {
+    const token = localStorage.getItem('token')
+    if (!token) return
+    
+    const response = await axios.get('/user/subscription', {
+      headers: {
+        Authorization: `Bearer ${token}`
+      }
+    })
+    
+    if (response.data.code === 200) {
+      const data = response.data.data
+      isVip.value = data.is_vip
+      
+      // 如果是VIP用户，添加高级模型
+      if (isVip.value) {
+        availableModels.value = [
+          { id: 'DeepSeek-R1', name: 'DeepSeek-R1' },
+          { id: 'DeepSeek-V3', name: 'DeepSeek-V3' },
+          { id: 'gpt-4o-mini', name: 'GPT-4o-mini' },
+          { id: 'gpt-4o', name: 'GPT-4o' },
+        ]
+      }
+    }
+  } catch (error) {
+    console.error('获取订阅状态失败:', error)
+  }
+}
 
 // 工具列表
 const tools = [
@@ -176,6 +263,10 @@ const abortController = ref(null)
 // 在组件顶部添加标志变量
 const hasSavedMessages = ref(false)
 
+// 添加欢迎卡片相关变量
+const showWelcomeCard = ref(false)
+const hasSeenWelcomeCard = ref(false)
+
 const scrollToBottom = async (force = false) => {
   if (!force && !shouldAutoScroll.value) return
   
@@ -246,7 +337,8 @@ const createNewChat = async () => {
     // 调用API创建新会话
     const response = await axios.post('/chat/sessions', {
       title: '新对话',
-      model: selectedModel.value
+      model: selectedModel.value,
+      user_id: userStore.userId // 确保传递用户ID
     }, {
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -263,6 +355,7 @@ const createNewChat = async () => {
       await loadChatHistory();
     }
   } catch (error) {
+    console.error('创建新对话失败:', error);
   }
 }
 
@@ -282,7 +375,10 @@ const saveCurrentChat = async () => {
     // 更新会话标题（如果是新对话）
     if (chatIndex === -1 && messages.value.length > 0) {
       const title = messages.value[0]?.content.slice(0, 30) + '...' || '新对话';
-      await axios.put(`/chat/sessions/${currentChatId.value}/title`, { title }, {
+      await axios.put(`/chat/sessions/${currentChatId.value}/title`, { 
+        title,
+        user_id: userStore.userId // 确保传递用户ID
+      }, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'X-User-ID': userStore.userId
@@ -307,7 +403,8 @@ const saveCurrentChat = async () => {
           role: msg.role,
           content: msg.content,
           sequence: savedMessagesCount + i,
-          is_terminated: msg.is_terminated || false
+          is_terminated: msg.is_terminated || false,
+          user_id: userStore.userId // 确保传递用户ID
         }, {
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -322,7 +419,8 @@ const saveCurrentChat = async () => {
               session_id: currentChatId.value,
               role: msg.role,
               content: msg.content,
-              sequence: savedMessagesCount + i
+              sequence: savedMessagesCount + i,
+              user_id: userStore.userId // 确保传递用户ID
             }, {
               headers: {
                 'Authorization': `Bearer ${token}`,
@@ -330,6 +428,7 @@ const saveCurrentChat = async () => {
               }
             });
           } catch (retryError) {
+            console.error('保存消息失败:', retryError);
           }
         }
       }
@@ -341,6 +440,7 @@ const saveCurrentChat = async () => {
     // 重新加载聊天历史以获取最新状态
     await loadChatHistory();
   } catch (error) {
+    console.error('保存对话失败:', error);
   }
 }
 
@@ -741,11 +841,18 @@ const loadUserInfo = () => {
       username.value = response.data.username;
       userStore.setUserId(response.data.id);
       userStore.setUsername(response.data.username);
+      
+      // 检查是否需要显示欢迎卡片
+      if (response.data.is_new_user === true && !localStorage.getItem('hasSeenWelcomeCard')) {
+        showWelcomeCard.value = true;
+      }
+      
       // 在获取用户名后加载聊天历史
       loadChatHistory();
     }
   })
   .catch(error => {
+    console.error('获取用户信息失败:', error);
     localStorage.removeItem('token');
     router.push('/login');
   });
@@ -780,6 +887,7 @@ onUnmounted(() => {
 
 onMounted(() => {
   loadUserInfo();
+  fetchUserSubscriptionStatus(); // 获取用户订阅状态
   loadChatTool(); // 默认加载聊天工具
   // 注意：loadChatHistory 会在 loadUserInfo 成功获取用户名后调用
   
@@ -1049,6 +1157,33 @@ const stopGeneration = async () => {
     }
   }
 }
+
+// 打开VIP计划弹窗
+const openVipPlanModal = () => {
+  showVipPlanModal.value = true
+}
+
+// 关闭VIP计划弹窗
+const closeVipPlanModal = () => {
+  showVipPlanModal.value = false
+}
+
+// 订阅计划处理
+const handleSubscribe = (plan) => {
+  showVipPlanModal.value = false
+  // 路由到订阅页面会在VipPlanCard组件中处理
+}
+
+// 添加欢迎卡片相关方法
+const closeWelcomeCard = () => {
+  showWelcomeCard.value = false
+  localStorage.setItem('hasSeenWelcomeCard', 'true')
+}
+
+const startTutorial = () => {
+  closeWelcomeCard()
+  // 这里可以添加教程引导逻辑
+}
 </script>
 
 <style>
@@ -1180,5 +1315,164 @@ const stopGeneration = async () => {
 ::-webkit-scrollbar {
   width: 0;
   background: transparent;
+}
+
+/* 欢迎卡片样式 */
+.welcome-card {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1000;
+  width: 90%;
+  max-width: 500px;
+  background-color: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  animation: slideIn 0.3s ease-out;
+}
+
+.welcome-content {
+  padding: 1.5rem;
+}
+
+.welcome-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1.5rem;
+}
+
+.welcome-header h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: #202124;
+  margin: 0;
+}
+
+.welcome-header i.fa-gift {
+  color: #1a73e8;
+  font-size: 1.5rem;
+}
+
+.close-button {
+  background: none;
+  border: none;
+  color: #5f6368;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 50%;
+  transition: background-color 0.2s;
+}
+
+.close-button:hover {
+  background-color: #f1f3f4;
+}
+
+.welcome-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.welcome-text {
+  font-size: 1.125rem;
+  color: #202124;
+  text-align: center;
+  margin: 0;
+}
+
+.vip-features {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+
+.feature-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  transition: background-color 0.2s;
+}
+
+.feature-item:hover {
+  background-color: #f1f3f4;
+}
+
+.feature-item i {
+  color: #1a73e8;
+  font-size: 1.25rem;
+}
+
+.feature-item span {
+  color: #202124;
+  font-size: 0.875rem;
+}
+
+.welcome-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+
+.action-button {
+  padding: 0.75rem 1.5rem;
+  border-radius: 4px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.action-button.primary {
+  background-color: #1a73e8;
+  color: white;
+  border: none;
+}
+
+.action-button.primary:hover {
+  background-color: #1557b0;
+}
+
+.action-button.secondary {
+  background-color: #f8f9fa;
+  color: #1a73e8;
+  border: 1px solid #e8eaed;
+}
+
+.action-button.secondary:hover {
+  background-color: #f1f3f4;
+  border-color: #dadce0;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -60%);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%);
+  }
+}
+
+@media (max-width: 768px) {
+  .welcome-card {
+    width: 95%;
+  }
+  
+  .vip-features {
+    grid-template-columns: 1fr;
+  }
+  
+  .welcome-actions {
+    flex-direction: column;
+  }
+  
+  .action-button {
+    width: 100%;
+  }
 }
 </style>

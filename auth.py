@@ -216,8 +216,36 @@ async def register(user: UserCreate):
             (user.username, user.email, hashed_password)
         )
         conn.commit()
+        
+        # 获取新用户ID
+        cursor.execute("SELECT id FROM users WHERE username = %s", (user.username,))
+        user_record = cursor.fetchone()
+        
+        if user_record:
+            user_id = user_record[0]
+            
+            # 赠送3天体验VIP
+            start_date = datetime.datetime.now()
+            end_date = start_date + datetime.timedelta(days=3)
+            
+            # 查找基础VIP套餐（周卡）
+            cursor.execute("SELECT id FROM subscription_plans WHERE name = '周卡VIP' LIMIT 1")
+            plan_record = cursor.fetchone()
+            
+            if plan_record:
+                plan_id = plan_record[0]
+                # 创建体验订阅
+                cursor.execute(
+                    """
+                    INSERT INTO user_subscriptions 
+                    (user_id, plan_id, start_date, end_date, status, payment_id)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    """,
+                    (user_id, plan_id, start_date, end_date, 'active', '注册赠送体验卡')
+                )
+                conn.commit()
 
-        return {"message": "User registered successfully"}
+        return {"message": "User registered successfully with 3-day VIP trial"}
     finally:
         cursor.close()
         conn.close()
@@ -275,15 +303,26 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
 # 获取当前用户信息
 @app.get("/auth/me", response_model=dict)
 async def get_current_user_info(current_user: dict = Depends(get_current_user)):
-    # 返回用户信息，但不包含密码
-    user_info = {
-        "id": current_user["id"],
-        "username": current_user["username"],
-        "email": current_user["email"],
-        "created_at": current_user["created_at"].isoformat() if isinstance(current_user["created_at"], datetime.datetime) else current_user["created_at"],
-        "updated_at": current_user["updated_at"].isoformat() if isinstance(current_user["updated_at"], datetime.datetime) else current_user["updated_at"]
-    }
-    return user_info
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        # 检查用户是否是第一次登录（通过检查是否有聊天记录）
+        cursor.execute("SELECT COUNT(*) as count FROM chat_sessions WHERE user_id = %s", (current_user["id"],))
+        chat_count = cursor.fetchone()["count"]
+        
+        # 返回用户信息，但不包含密码
+        user_info = {
+            "id": current_user["id"],
+            "username": current_user["username"],
+            "email": current_user["email"],
+            "created_at": current_user["created_at"].isoformat() if isinstance(current_user["created_at"], datetime.datetime) else current_user["created_at"],
+            "updated_at": current_user["updated_at"].isoformat() if isinstance(current_user["updated_at"], datetime.datetime) else current_user["updated_at"],
+            "is_new_user": chat_count == 0  # 如果没有聊天记录，说明是新用户
+        }
+        return user_info
+    finally:
+        cursor.close()
+        conn.close()
 
 
 if __name__ == "__main__":

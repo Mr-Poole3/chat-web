@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS users (
     username VARCHAR(50) NOT NULL UNIQUE,
     email VARCHAR(100) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
+    role ENUM('user', 'admin') DEFAULT 'user',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
@@ -42,3 +43,41 @@ CREATE TABLE IF NOT EXISTS chat_messages (
 -- 创建索引
 CREATE INDEX idx_chat_sessions_user_id ON chat_sessions(user_id);
 CREATE INDEX idx_chat_messages_session_id ON chat_messages(session_id);
+
+-- 订阅计划表
+CREATE TABLE IF NOT EXISTS subscription_plans (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+    duration_days INT NOT NULL,  -- 订阅持续天数
+    price DECIMAL(10, 2) NOT NULL,
+    description TEXT,
+    features TEXT,  -- 可用功能列表JSON格式存储
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- 用户订阅表
+CREATE TABLE IF NOT EXISTS user_subscriptions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    plan_id INT NOT NULL,
+    start_date TIMESTAMP NOT NULL,
+    end_date TIMESTAMP NOT NULL,
+    status ENUM('active', 'expired', 'cancelled') DEFAULT 'active',
+    payment_id VARCHAR(100),  -- 支付相关ID，如有需要
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (plan_id) REFERENCES subscription_plans(id) ON DELETE RESTRICT
+);
+
+-- 创建订阅相关索引
+CREATE INDEX idx_user_subscriptions_user_id ON user_subscriptions(user_id);
+CREATE INDEX idx_user_subscriptions_status ON user_subscriptions(status);
+CREATE INDEX idx_user_subscriptions_end_date ON user_subscriptions(end_date);
+
+-- 插入基础订阅计划数据
+INSERT INTO subscription_plans (name, duration_days, price, description, features) VALUES
+('周卡VIP', 7, 19.99, '7天高级会员，畅享所有AI模型', '{"all_models": true, "all_tools": true, "all_pages": true}'),
+('月卡VIP', 30, 59.99, '30天高级会员，畅享所有AI模型，优惠更多', '{"all_models": true, "all_tools": true, "all_pages": true}'),
+('年卡VIP', 365, 499.99, '365天高级会员，超值体验，享受所有功能', '{"all_models": true, "all_tools": true, "all_pages": true}');

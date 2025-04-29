@@ -38,6 +38,62 @@
       <div class="register-link">
         还没有账号？<router-link to="/register">立即注册</router-link>
       </div>
+      <div class="forgot-password-link">
+        <a href="#" @click.prevent="showForgotPasswordModal">忘记密码？</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- 忘记密码模态框 -->
+  <div v-if="isForgotPasswordModalVisible" class="modal">
+    <div class="modal-content">
+      <span class="close" @click="closeForgotPasswordModal">&times;</span>
+      <h2 class="modal-title">重置密码</h2>
+      <form @submit.prevent="handleForgotPassword" class="forgot-password-form">
+        <div class="form-group" :class="{ error: errors.username }">
+          <label for="forgot-username">用户名</label>
+          <input
+            v-model="forgotPasswordForm.username"
+            type="text"
+            id="forgot-username"
+            required
+            @input="clearError('username')"
+          >
+          <div v-if="errors.username" class="error-message">{{ errors.username }}</div>
+        </div>
+        <div class="form-group" :class="{ error: errors.email }">
+          <label for="forgot-email">电子邮箱</label>
+          <input
+            v-model="forgotPasswordForm.email"
+            type="email"
+            id="forgot-email"
+            required
+            @input="clearError('email')"
+          >
+          <div v-if="errors.email" class="error-message">{{ errors.email }}</div>
+        </div>
+        <div class="form-group" :class="{ error: errors.newPassword }">
+          <label for="new-password">新密码</label>
+          <input
+            v-model="forgotPasswordForm.newPassword"
+            type="password"
+            id="new-password"
+            required
+            @input="clearError('newPassword')"
+          >
+          <div class="password-requirements">
+            密码必须包含至少8个字符，包括大小写字母和数字
+          </div>
+          <div v-if="errors.newPassword" class="error-message">{{ errors.newPassword }}</div>
+        </div>
+        <div v-if="error" class="error-message general-error">
+          {{ error }}
+        </div>
+        <button type="submit" class="submit-button" :disabled="loading">
+          <span v-if="!loading">重置密码</span>
+          <div v-else class="loading-spinner"></div>
+        </button>
+      </form>
     </div>
   </div>
 </template>
@@ -56,18 +112,88 @@ const form = ref({
   password: ''
 })
 
+const forgotPasswordForm = reactive({
+  username: '',
+  email: '',
+  newPassword: ''
+})
+
 const loading = ref(false)
 const error = ref('')
+const isForgotPasswordModalVisible = ref(false)
 
 const errors = reactive({
   username: '',
   password: '',
+  email: '',
+  newPassword: '',
   general: ''
 })
 
 const clearError = (field) => {
   errors[field] = ''
   errors.general = ''
+}
+
+const showForgotPasswordModal = () => {
+  isForgotPasswordModalVisible.value = true
+}
+
+const closeForgotPasswordModal = () => {
+  isForgotPasswordModalVisible.value = false
+  forgotPasswordForm.username = ''
+  forgotPasswordForm.email = ''
+  forgotPasswordForm.newPassword = ''
+  error.value = ''
+  Object.keys(errors).forEach(key => errors[key] = '')
+}
+
+const validatePassword = (password) => {
+  if (password.length < 8) {
+    return '密码长度必须至少为8个字符'
+  }
+  if (!/[A-Z]/.test(password)) {
+    return '密码必须包含至少一个大写字母'
+  }
+  if (!/[a-z]/.test(password)) {
+    return '密码必须包含至少一个小写字母'
+  }
+  if (!/[0-9]/.test(password)) {
+    return '密码必须包含至少一个数字'
+  }
+  return ''
+}
+
+const handleForgotPassword = async () => {
+  if (!forgotPasswordForm.username || !forgotPasswordForm.email || !forgotPasswordForm.newPassword) {
+    error.value = '请填写所有必填字段'
+    return
+  }
+
+  // 验证密码
+  const passwordError = validatePassword(forgotPasswordForm.newPassword)
+  if (passwordError) {
+    errors.newPassword = passwordError
+    return
+  }
+
+  loading.value = true
+  error.value = ''
+
+  try {
+    await userStore.forgotPassword(
+      forgotPasswordForm.username,
+      forgotPasswordForm.email,
+      forgotPasswordForm.newPassword
+    )
+    closeForgotPasswordModal()
+    alert('密码重置成功，请使用新密码登录')
+    router.push('/login')
+  } catch (err) {
+    error.value = err.response?.data?.detail || '重置密码失败，请稍后重试'
+  } finally {
+    loading.value = false
+  }
 }
 
 const handleSubmit = async () => {
@@ -241,6 +367,101 @@ const handleSubmit = async () => {
 
 .register-link a:hover {
   text-decoration: underline;
+}
+
+.forgot-password-link {
+  text-align: center;
+  margin-top: 10px;
+  color: #a5b4fc;
+}
+
+.forgot-password-link a {
+  color: #6366f1;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.forgot-password-link a:hover {
+  text-decoration: underline;
+}
+
+.modal {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.8);
+  z-index: 200;
+}
+
+.modal-content {
+  background-color: #1e2130;
+  padding: 30px;
+  border-radius: 10px;
+  width: 400px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  color: #e0e0ff;
+}
+
+.modal-title {
+  text-align: center;
+  margin-bottom: 20px;
+  font-size: 24px;
+}
+
+.close {
+  color: #aaa;
+  float: right;
+  font-size: 28px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.close:hover,
+.close:focus {
+  color: white;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.forgot-password-form {
+  display: flex;
+  flex-direction: column;
+}
+
+.submit-button {
+  width: 100%;
+  padding: 12px;
+  background: linear-gradient(90deg, #4c4ed9, #6366f1);
+  border: none;
+  border-radius: 6px;
+  color: white;
+  font-size: 16px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: 20px;
+}
+
+.submit-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(99, 102, 241, 0.3);
+}
+
+.submit-button:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.password-requirements {
+  font-size: 12px;
+  color: #a5b4fc;
+  margin-top: 5px;
+  margin-bottom: 5px;
 }
 
 /* 移动端适配 */

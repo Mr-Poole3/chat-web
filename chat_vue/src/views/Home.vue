@@ -179,6 +179,12 @@ const navigateToFeature = (feature) => {
   if (feature.id === 'pdf-to-word') {
     return;
   }
+  
+  // 论文辅助阅读特殊处理
+  if (feature.id === 'essay') {
+    window.open('http://139.224.203.197:7863/', '_blank');
+    return;
+  }
 
   if (!userStore.isAuthenticated) {
     router.push('/login')

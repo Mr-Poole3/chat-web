@@ -84,6 +84,11 @@ class ChangePasswordData(BaseModel):
     current_password: str
     new_password: str
 
+class ResetPasswordRequest(BaseModel):
+    username: str
+    email: str
+    new_password: str
+
 
 # 数据库连接函数
 def get_db_connection():
@@ -234,14 +239,22 @@ async def register(user: UserCreate):
             
             if plan_record:
                 plan_id = plan_record[0]
-                # 创建体验订阅
+                # 创建体验订阅（注册即激活）
                 cursor.execute(
                     """
                     INSERT INTO user_subscriptions 
-                    (user_id, plan_id, start_date, end_date, status, payment_id)
-                    VALUES (%s, %s, %s, %s, %s, %s)
+                    (user_id, plan_id, start_date, end_date, status, payment_id, actual_end_date)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
                     """,
-                    (user_id, plan_id, start_date, end_date, 'active', '注册赠送体验卡')
+                    (
+                        user_id, 
+                        plan_id, 
+                        start_date, 
+                        end_date, 
+                        'active',  # 直接设为激活状态
+                        '注册赠送体验卡',
+                        end_date     # 实际结束时间与预期结束时间相同
+                    )
                 )
                 conn.commit()
 
@@ -257,44 +270,59 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
-        # 打印接收到的数据，用于调试
-        print(f"Received login request for username: {form_data.username}")
-
-        cursor.execute("SELECT * FROM users WHERE username = %s", (form_data.username,))
+        # 验证用户凭据
+        cursor.execute(
+            "SELECT * FROM users WHERE username = %s",
+            (form_data.username,)
+        )
         user = cursor.fetchone()
-
-        if not user:
-            print(f"User not found: {form_data.username}")
+        
+        if not user or not verify_password(form_data.password, user["password"]):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Incorrect username or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-
-        # 打印密码验证结果，用于调试
-        is_valid = verify_password(form_data.password, user["password"]) # type: ignore
-        print(f"Password validation result: {is_valid}")
-
-        if not is_valid:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Incorrect username or password",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+            
+        # 检查是否有冻结状态的会员
+        cursor.execute("""
+            SELECT * FROM user_subscriptions 
+            WHERE user_id = %s 
+            AND status = 'frozen'
+            ORDER BY created_at DESC 
+            LIMIT 1
+        """, (user["id"],))
+        frozen_subscription = cursor.fetchone()
+        
+        if frozen_subscription:
+            # 计算实际结束时间
+            duration = frozen_subscription["end_date"] - frozen_subscription["start_date"]
+            actual_end_date = datetime.datetime.now() + duration
+            
+            # 激活会员
+            cursor.execute("""
+                UPDATE user_subscriptions 
+                SET status = 'active',
+                    first_activated_at = %s,
+                    actual_end_date = %s
+                WHERE id = %s
+            """, (
+                datetime.datetime.now(),
+                actual_end_date,
+                frozen_subscription["id"]
+            ))
+            conn.commit()
 
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
-            data={"sub": user["username"]}, expires_delta=access_token_expires # type: ignore
+            data={"sub": user["username"]}, expires_delta=access_token_expires
         )
-
+        
         return {
             "access_token": access_token,
             "token_type": "bearer",
-            "username": user["username"] # type: ignore
+            "username": user["username"]
         }
-    except Exception as e:
-        print(f"Login error: {str(e)}")
-        raise
     finally:
         cursor.close()
         conn.close()
@@ -306,20 +334,89 @@ async def get_current_user_info(current_user: dict = Depends(get_current_user)):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     try:
-        # 检查用户是否是第一次登录（通过检查是否有聊天记录）
-        cursor.execute("SELECT COUNT(*) as count FROM chat_sessions WHERE user_id = %s", (current_user["id"],))
-        chat_count = cursor.fetchone()["count"]
+        # 获取用户的会员信息
+        cursor.execute("""
+            SELECT 
+                us.*, 
+                sp.name as plan_name,
+                sp.features as plan_features
+            FROM user_subscriptions us
+            LEFT JOIN subscription_plans sp ON us.plan_id = sp.id
+            WHERE us.user_id = %s 
+            AND (
+                (us.status = 'active' AND us.actual_end_date > NOW())
+                OR us.status = 'frozen'
+            )
+            ORDER BY us.created_at DESC
+            LIMIT 1
+        """, (current_user["id"],))
         
-        # 返回用户信息，但不包含密码
+        subscription = cursor.fetchone()
+        
+        # 构建响应数据
         user_info = {
             "id": current_user["id"],
             "username": current_user["username"],
             "email": current_user["email"],
-            "created_at": current_user["created_at"].isoformat() if isinstance(current_user["created_at"], datetime.datetime) else current_user["created_at"],
-            "updated_at": current_user["updated_at"].isoformat() if isinstance(current_user["updated_at"], datetime.datetime) else current_user["updated_at"],
-            "is_new_user": chat_count == 0  # 如果没有聊天记录，说明是新用户
+            "role": current_user["role"],
+            "subscription": None
         }
+        
+        if subscription:
+            # 转换features字符串为字典
+            features = eval(subscription["plan_features"]) if subscription["plan_features"] else {}
+            
+            user_info["subscription"] = {
+                "plan_name": subscription["plan_name"],
+                "status": subscription["status"],
+                "features": features,
+                "start_date": subscription["start_date"].isoformat() if subscription["start_date"] else None,
+                "end_date": subscription["end_date"].isoformat() if subscription["end_date"] else None,
+                "first_activated_at": subscription["first_activated_at"].isoformat() if subscription["first_activated_at"] else None,
+                "actual_end_date": subscription["actual_end_date"].isoformat() if subscription["actual_end_date"] else None
+            }
+        
         return user_info
+    finally:
+        cursor.close()
+        conn.close()
+
+
+@app.post("/api/v1/auth/reset-password", response_model=dict)
+async def reset_password(reset_data: ResetPasswordRequest):
+    # 验证新密码强度
+    if len(reset_data.new_password) < 8 or not any(c.isupper() for c in reset_data.new_password) or \
+       not any(c.islower() for c in reset_data.new_password) or not any(c.isdigit() for c in reset_data.new_password):
+        raise HTTPException(
+            status_code=400,
+            detail="新密码必须至少包含8个字符，并包含大写字母、小写字母和数字"
+        )
+
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    try:
+        # 验证用户名和邮箱是否匹配
+        cursor.execute(
+            "SELECT * FROM users WHERE username = %s AND email = %s",
+            (reset_data.username, reset_data.email)
+        )
+        user = cursor.fetchone()
+        
+        if not user:
+            raise HTTPException(
+                status_code=400,
+                detail="用户名或邮箱不正确"
+            )
+
+        # 更新密码
+        hashed_password = get_password_hash(reset_data.new_password)
+        cursor.execute(
+            "UPDATE users SET password = %s WHERE id = %s",
+            (hashed_password, user['id'])
+        )
+        conn.commit()
+        
+        return {"message": "密码重置成功"}
     finally:
         cursor.close()
         conn.close()

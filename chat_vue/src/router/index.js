@@ -1,72 +1,106 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { useUserStore } from '@/stores/user'
-import Home from '@/views/Home.vue'
-import Chat from '@/views/Chat.vue'
+
+const routes = [
+  {
+    path: '/',
+    name: 'Home',
+    component: () => import('@/views/Home.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/login',
+    name: 'Login',
+    component: () => import('@/views/Login.vue')
+  },
+  {
+    path: '/register',
+    name: 'Register',
+    component: () => import('@/views/Register.vue')
+  },
+  {
+    path: '/chat',
+    name: 'Chat',
+    component: () => import('@/views/Chat.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/subscription',
+    name: 'Subscription',
+    component: () => import('@/views/Subscription.vue'),
+    meta: { requiresAuth: true }
+  },
+  // 添加匹配所有未知路由的catch-all路由
+  {
+    path: '/:pathMatch(.*)*',
+    redirect: '/'
+  }
+]
 
 const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
-  routes: [
-    {
-      path: '/',
-      name: 'home',
-      component: Home,
-      meta: { requiresAuth: true }  // 主页也需要认证
-    },
-    {
-      path: '/chat',
-      name: 'chat',
-      component: Chat,
-      meta: { requiresAuth: true }
-    },
-    {
-      path: '/subscription',
-      name: 'subscription',
-      component: () => import('@/views/Subscription.vue'),
-      meta: { requiresAuth: true }
-    },
-    {
-      path: '/login',
-      name: 'login',
-      component: () => import('@/views/Login.vue'),
-      meta: { requiresGuest: true }
-    },
-    {
-      path: '/register',
-      name: 'register',
-      component: () => import('@/views/Register.vue'),
-      meta: { requiresGuest: true }
-    }
-  ]
+  history: createWebHistory(),
+  routes
 })
 
-// 导航守卫
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
+  console.log('路由守卫触发:', {
+    to: to.path,
+    from: from.path,
+    requiresAuth: to.meta.requiresAuth,
+    requiresAdmin: to.meta.requiresAdmin
+  })
+
   const userStore = useUserStore()
-  const isAuthenticated = userStore.isAuthenticated || !!localStorage.getItem('token')
+  
+  // 优先初始化用户状态
+  if (userStore.token && !userStore.user) {
+    try {
+      await userStore.init()
+    } catch (error) {
+      console.error('初始化用户状态失败:', error)
+    }
+  }
+  
+  // 重新检查认证状态
+  const isAuthenticated = userStore.isAuthenticated && userStore.isTokenValid
+  const user = userStore.user
 
+  console.log('当前认证状态:', {
+    isAuthenticated,
+    tokenValid: userStore.isTokenValid,
+    user: user ? { id: user.id, username: user.username, role: user.role } : null
+  })
 
-  // 需要认证的路由
-  if (to.matched.some(record => record.meta.requiresAuth)) {
+  // 处理需要认证的路由
+  if (to.meta.requiresAuth) {
     if (!isAuthenticated) {
-      next({
-        name: 'login',
-        query: { redirect: to.fullPath }  // 保存原目标路径
-      })
-    } else {
-      next()
+      console.log('需要认证，但用户未登录或令牌无效，重定向到登录页')
+      // 避免循环重定向
+      if (to.path === from.path && from.path !== '/login') {
+        next('/login')
+      } else {
+        next({
+          path: '/login',
+          query: { redirect: to.fullPath !== '/' ? to.fullPath : undefined }
+        })
+      }
+      return
     }
-  }
-  // 游客路由（登录/注册）
-  else if (to.matched.some(record => record.meta.requiresGuest)) {
-    if (isAuthenticated) {
-      next({ name: 'home' })  // 已登录用户重定向到 home 页面
-    } else {
-      next()
+    
+    // 检查管理员权限
+    if (to.meta.requiresAdmin && (!user || user.role !== 'admin')) {
+      console.log('需要管理员权限，但用户不是管理员，重定向到首页')
+      next('/')
+      return
     }
+  } else if (to.path === '/login' && isAuthenticated) {
+    // 已登录用户尝试访问登录页，重定向到首页
+    console.log('已登录用户尝试访问登录页，重定向到首页')
+    next('/')
+    return
   }
-  else {
-    next()
-  }
+
+  next()
 })
 
 export default router

@@ -25,9 +25,31 @@ axios.interceptors.request.use(config => {
 axios.interceptors.response.use(
   response => response,
   error => {
-    if (error.response?.status === 401) {
+    // 处理 401 未授权错误（令牌过期或无效）
+    if (error.response && error.response.status === 401) {
+      console.log('令牌已过期或无效，重定向到登录页面')
+      
+      // 清除本地存储的令牌和用户信息
       localStorage.removeItem('token')
-      router.push('/login')
+      localStorage.removeItem('userInfo')
+      
+      // 如果存在 Pinia 存储，也清除该状态
+      const pinia = router.app?._instance?.appContext.app.config.globalProperties.$pinia
+      if (pinia) {
+        const userStore = pinia._s.get('user')
+        if (userStore) {
+          userStore.logout()
+        }
+      }
+      
+      // 重定向到登录页面，但避免循环
+      const currentPath = router.currentRoute.value.fullPath
+      if (currentPath !== '/login' && !currentPath.startsWith('/login')) {
+        router.push({
+          path: '/login',
+          query: { redirect: currentPath !== '/' ? currentPath : undefined }
+        })
+      }
     }
     return Promise.reject(error)
   }
@@ -59,7 +81,7 @@ const toastOptions = {
 
 app.use(createPinia())
 app.use(router)
+app.use(DotLottieVue)
 app.use(Toast, toastOptions)
-app.component('DotLottieVue', DotLottieVue)
 
 app.mount('#app')

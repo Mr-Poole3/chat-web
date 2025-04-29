@@ -53,9 +53,17 @@ router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore()
   
   // 优先初始化用户状态
-  if (userStore.token && !userStore.user) {
+  if (userStore.token) {
     try {
-      await userStore.init()
+      // 如果有token但没有user信息，先尝试初始化
+      if (!userStore.user) {
+        await userStore.init()
+      }
+      // 即使有user信息，也检查token是否有效
+      else if (!userStore.isTokenValid) {
+        console.log('令牌无效，执行登出')
+        userStore.logout()
+      }
     } catch (error) {
       console.error('初始化用户状态失败:', error)
     }
@@ -75,15 +83,10 @@ router.beforeEach(async (to, from, next) => {
   if (to.meta.requiresAuth) {
     if (!isAuthenticated) {
       console.log('需要认证，但用户未登录或令牌无效，重定向到登录页')
-      // 避免循环重定向
-      if (to.path === from.path && from.path !== '/login') {
-        next('/login')
-      } else {
-        next({
-          path: '/login',
-          query: { redirect: to.fullPath !== '/' ? to.fullPath : undefined }
-        })
-      }
+      next({
+        path: '/login',
+        query: { redirect: to.fullPath !== '/' ? to.fullPath : undefined }
+      })
       return
     }
     

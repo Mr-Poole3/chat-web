@@ -41,20 +41,34 @@ export const useUserStore = defineStore('user', {
   actions: {
     // 初始化用户状态
     async init() {
-      if (this.token && !this.user) {
+      if (this.token) {
         // 有令牌但没有用户信息，尝试获取用户信息
         if (this.isTokenValid()) {
           try {
             await this.fetchUserInfo()
+            return true
           } catch (error) {
             console.error('初始化用户状态失败:', error)
-            this.logout()
+            // 仅当API明确返回401时才登出
+            if (error.response && error.response.status === 401) {
+              this.logout()
+            }
+            return false
           }
         } else {
           // 令牌无效，执行登出
+          console.log('令牌无效，执行登出')
           this.logout()
+          return false
         }
       }
+      return false
+    },
+    
+    // 检查令牌有效性但不主动登出，用于页面刷新时状态检查
+    checkTokenValidity() {
+      if (!this.token) return false
+      return this.isTokenValid()
     },
     
     async login(credentials) {

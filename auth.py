@@ -284,6 +284,35 @@ async def login(form_data: OAuth2PasswordRequestForm = Depends()):
                 headers={"WWW-Authenticate": "Bearer"},
             )
             
+        # 检查并更新过期的VIP状态
+        print(f"检查用户 {user['id']} 的VIP状态...")
+        
+        # 直接获取当前时间，不使用MySQL的时间函数
+        current_time = datetime.datetime.now()
+        print(f"当前时间: {current_time}")
+        
+        # 查询用户的订阅状态
+        cursor.execute("""
+            SELECT id, status, end_date 
+            FROM user_subscriptions 
+            WHERE user_id = %s 
+            AND status = 'active'
+        """, (user["id"],))
+        subscriptions = cursor.fetchall()
+        
+        for sub in subscriptions:
+            print(f"订阅ID: {sub['id']}, 状态: {sub['status']}, 结束时间: {sub['end_date']}")
+            if sub['end_date'] <= current_time:
+                print(f"订阅 {sub['id']} 已过期，更新状态为 expired")
+                cursor.execute("""
+                    UPDATE user_subscriptions 
+                    SET status = 'expired',
+                        updated_at = NOW()
+                    WHERE id = %s
+                """, (sub['id'],))
+                conn.commit()
+                print(f"订阅 {sub['id']} 状态已更新")
+            
         # 检查是否有冻结状态的会员
         cursor.execute("""
             SELECT * FROM user_subscriptions 
